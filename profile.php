@@ -40,16 +40,27 @@ if ($_POST && isset($_POST['update_profile'])) {
         $address = sanitize($_POST['address']);
         $date_of_birth = $_POST['date_of_birth'] ? $_POST['date_of_birth'] : null;
         $civil_status = sanitize($_POST['civil_status']);
+        $ncin = sanitize($_POST['ncin']);
+        $ncss_first = sanitize($_POST['ncss_first']);
+        $ncss_last = sanitize($_POST['ncss_last']);
+        $education = sanitize($_POST['education']);
+        $has_driving_license = isset($_POST['has_driving_license']) ? 1 : 0;
+        $gender = sanitize($_POST['gender']);
+        $factory = sanitize($_POST['factory']);
         $children_data = isset($_POST['children']) ? $_POST['children'] : [];
         $children_to_delete = isset($_POST['delete_children']) ? array_map('intval', $_POST['delete_children']) : [];
 
         // Validation
-        if (empty($first_name) || empty($last_name) || empty($email) || empty($civil_status)) {
+        if (empty($first_name) || empty($last_name) || empty($email) || empty($civil_status) || empty($gender)) {
             $error = 'Please fill in all required fields';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address';
         } elseif (!in_array($civil_status, ['single', 'married', 'divorced', 'widowed'])) {
             $error = 'Invalid civil status';
+        } elseif (!in_array($gender, ['male', 'female'])) {
+            $error = 'Invalid gender';
+        } elseif (strlen($address) > 32) {
+            $error = 'Address must be 32 characters or less';
         } else {
             try {
                 // Check if email already exists for other users
@@ -69,10 +80,15 @@ if ($_POST && isset($_POST['update_profile'])) {
                     // Update employee_profiles table
                     $stmt = $pdo->prepare("
                         UPDATE employee_profiles 
-                        SET first_name = ?, last_name = ?, phone = ?, address = ?, date_of_birth = ?, civil_status = ?
+                        SET first_name = ?, last_name = ?, phone = ?, address = ?, date_of_birth = ?, 
+                            civil_status = ?, ncin = ?, ncss_first = ?, ncss_last = ?, 
+                            education = ?, has_driving_license = ?, gender = ?, factory = ?
                         WHERE user_id = ?
                     ");
-                    $stmt->execute([$first_name, $last_name, $phone, $address, $date_of_birth, $civil_status, $_SESSION['user_id']]);
+                    $stmt->execute([$first_name, $last_name, $phone, $address, $date_of_birth, 
+                                    $civil_status, $ncin, $ncss_first, $ncss_last, 
+                                    $education, $has_driving_license, $gender, $factory, 
+                                    $_SESSION['user_id']]);
 
                     // Delete specified children
                     if (!empty($children_to_delete)) {
@@ -180,7 +196,7 @@ if ($_POST && isset($_POST['update_profile'])) {
 
             <div class="info-note">
                 <strong>Note:</strong> Fields marked with <span class="required">*</span> are required. Some information
-                like Employee ID and Department can only be updated by administrators.
+                like Employee ID, Department, Position, Hire Date, Salary, and Status can only be updated by administrators.
             </div>
 
             <form method="POST" action="">
@@ -190,7 +206,7 @@ if ($_POST && isset($_POST['update_profile'])) {
                     <div class="form-group readonly">
                         <label for="employee_id">Employee ID</label>
                         <input type="text" id="employee_id"
-                            value="<?php echo htmlspecialchars($employee['employee_id']); ?>" readonly>
+                            value="<?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?>" readonly>
                     </div>
 
                     <div class="form-group readonly">
@@ -230,7 +246,7 @@ if ($_POST && isset($_POST['update_profile'])) {
                     <div class="form-group">
                         <label for="date_of_birth">Date of Birth</label>
                         <input type="date" id="date_of_birth" name="date_of_birth"
-                            value="<?php echo $employee['date_of_birth'] ?? ''; ?>">
+                            value="<?php echo htmlspecialchars($employee['date_of_birth'] ?? ''); ?>">
                     </div>
                 </div>
 
@@ -239,23 +255,72 @@ if ($_POST && isset($_POST['update_profile'])) {
                     <select id="civil_status" name="civil_status" required>
                         <option value="single" <?php echo ($employee['civil_status'] === 'single') ? 'selected' : ''; ?>>
                             Single</option>
-                        <option value="married" <?php echo ($employee['civil_status'] === 'married') ? 'selected' : ''; ?>>Married</option>
-                        <option value="divorced" <?php echo ($employee['civil_status'] === 'divorced') ? 'selected' : ''; ?>>Divorced</option>
-                        <option value="widowed" <?php echo ($employee['civil_status'] === 'widowed') ? 'selected' : ''; ?>>Widowed</option>
+                        <option value="married" <?php echo ($employee['civil_status'] === 'married') ? 'selected' : ''; ?>>
+                            Married</option>
+                        <option value="divorced" <?php echo ($employee['civil_status'] === 'divorced') ? 'selected' : ''; ?>>
+                            Divorced</option>
+                        <option value="widowed" <?php echo ($employee['civil_status'] === 'widowed') ? 'selected' : ''; ?>>
+                            Widowed</option>
                     </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ncin">NCIN</label>
+                        <input type="text" id="ncin" name="ncin"
+                            value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ncss_first">NCSS (First 8 digits)</label>
+                        <input type="text" id="ncss_first" name="ncss_first"
+                            value="<?php echo htmlspecialchars($employee['ncss_first'] ?? ''); ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ncss_last">NCSS (Last 2 digits)</label>
+                        <input type="text" id="ncss_last" name="ncss_last"
+                            value="<?php echo htmlspecialchars($employee['ncss_last'] ?? ''); ?>">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="education">Education</label>
+                    <input type="text" id="education" name="education"
+                        value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
+                </div>
+
+                <div class="form-group">
+                    <label for="has_driving_license">Has Driving License</label>
+                    <input type="checkbox" id="has_driving_license" name="has_driving_license"
+                        <?php echo ($employee['has_driving_license']) ? 'checked' : ''; ?>>
+                </div>
+
+                <div class="form-group">
+                    <label for="gender">Gender <span class="required">*</span></label>
+                    <select id="gender" name="gender" required>
+                        <option value="male" <?php echo ($employee['gender'] === 'male') ? 'selected' : ''; ?>>Male</option>
+                        <option value="female" <?php echo ($employee['gender'] === 'female') ? 'selected' : ''; ?>>Female</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="factory">Factory</label>
+                    <input type="text" id="factory" name="factory"
+                        value="<?php echo htmlspecialchars($employee['factory'] ?? ''); ?>">
                 </div>
 
                 <div class="form-row">
                     <div class="form-group readonly">
                         <label for="department">Department</label>
                         <input type="text" id="department"
-                            value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>">
+                            value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>" readonly>
                     </div>
 
                     <div class="form-group readonly">
                         <label for="position">Position</label>
                         <input type="text" id="position"
-                            value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>">
+                            value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>" readonly>
                     </div>
                 </div>
 
@@ -269,17 +334,17 @@ if ($_POST && isset($_POST['update_profile'])) {
                     <div class="form-group readonly">
                         <label for="hire_date">Hire Date</label>
                         <input type="text" id="hire_date"
-                            value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>">
+                            value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>" readonly>
                     </div>
 
                     <div class="form-group readonly">
                         <label for="status">Status</label>
-                        <input type="text" id="status" value="<?php echo ucfirst($employee['status'] ?? 'active'); ?>">
+                        <input type="text" id="status" value="<?php echo ucfirst($employee['status'] ?? 'active'); ?>" readonly>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label>Children </label>
+                    <label>Children</label>
                     <div id="children-container" class="children-container">
                         <?php foreach ($children as $child): ?>
                             <div class="child-row">

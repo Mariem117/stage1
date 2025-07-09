@@ -1,0 +1,228 @@
+document.addEventListener('DOMContentLoaded', function () {
+    // Color palette for charts
+    const colors = {
+        primary: '#667eea',
+        secondary: '#38a169',
+        accent: '#e53e3e',
+        warning: '#d69e2e',
+        info: '#3182ce',
+        purple: '#805ad5',
+        pink: '#d53f8c',
+        teal: '#319795',
+        orange: '#dd6b20',
+        gray: '#718096'
+    };
+
+    const chartColors = [
+        colors.primary,
+        colors.secondary,
+        colors.accent,
+        colors.warning,
+        colors.info,
+        colors.purple,
+        colors.pink,
+        colors.teal,
+        colors.orange,
+        colors.gray
+    ];
+
+    // Common chart options
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 2,
+        plugins: {
+            legend: {
+                labels: {
+                    color: '#2d3748',
+                    font: {
+                        size: 12,
+                        weight: 'bold'
+                    }
+                }
+            },
+            tooltip: {
+                backgroundColor: '#2d3748',
+                titleColor: '#fff',
+                bodyColor: '#e2e8f0',
+                borderColor: colors.primary,
+                borderWidth: 1
+            }
+        }
+    };
+
+    // Gender Distribution Chart
+    const genderCtx = document.getElementById('genderChart');
+    if (genderCtx && typeof genderData !== 'undefined') {
+        const genderLabels = Object.keys(genderData);
+        const genderValues = Object.values(genderData);
+        
+        new Chart(genderCtx, {
+            type: 'doughnut',
+            data: {
+                labels: genderLabels.map(label => label.charAt(0).toUpperCase() + label.slice(1)),
+                datasets: [{
+                    data: genderValues,
+                    backgroundColor: chartColors.slice(0, genderLabels.length),
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    hoverBorderWidth: 3
+                }]
+            },
+            options: {
+                ...commonOptions,
+                aspectRatio: 1.5,
+                cutout: '60%',
+                plugins: {
+                    ...commonOptions.plugins,
+                    legend: {
+                        ...commonOptions.plugins.legend,
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
+    // Education Level Chart
+    const educationCtx = document.getElementById('educationChart');
+    if (educationCtx && typeof educationData !== 'undefined') {
+        const educationLabels = Object.keys(educationData);
+        const educationValues = Object.values(educationData);
+        
+        new Chart(educationCtx, {
+            type: 'bar',
+            data: {
+                labels: educationLabels,
+                datasets: [{
+                    label: 'Number of Employees',
+                    data: educationValues,
+                    backgroundColor: colors.secondary,
+                    borderColor: colors.secondary,
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    hoverBackgroundColor: '#2f855a'
+                }]
+            },
+            options: {
+                ...commonOptions,
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#4a5568',
+                            font: {
+                                size: 11
+                            }
+                        },
+                        grid: {
+                            color: '#edf2f7'
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#4a5568',
+                            font: {
+                                size: 11
+                            }
+                        },
+                        grid: {
+                            color: '#edf2f7'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // Age Segmentation Chart
+    const ageCtx = document.getElementById('ageChart');
+    if (ageCtx && typeof ageData !== 'undefined') {
+        const ageLabels = Object.keys(ageData);
+        const ageValues = Object.values(ageData);
+        
+        new Chart(ageCtx, {
+            type: 'polarArea',
+            data: {
+                labels: ageLabels.map(label => label + ' years'),
+                datasets: [{
+                    data: ageValues,
+                    backgroundColor: chartColors.slice(0, ageLabels.length).map(color => color + '80'),
+                    borderColor: chartColors.slice(0, ageLabels.length),
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                ...commonOptions,
+                aspectRatio: 1.8,
+                plugins: {
+                    ...commonOptions.plugins,
+                    legend: {
+                        ...commonOptions.plugins.legend,
+                        position: 'right'
+                    }
+                },
+                scales: {
+                    r: {
+                        ticks: {
+                            color: '#4a5568',
+                            font: {
+                                size: 10
+                            }
+                        },
+                        grid: {
+                            color: '#edf2f7'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // Monthly Revenue Chart (keeping the original)
+    const revenueCtx = document.getElementById('myChart');
+    if (revenueCtx) {
+        new Chart(revenueCtx, {
+            type: 'bar',
+            data: {
+                labels: ['January', 'February', 'March', 'April'],
+                datasets: [{
+                    label: 'Monthly Revenue',
+                    data: [1200, 1900, 3000, 2500],
+                    backgroundColor: colors.primary,
+                    borderRadius: 8,
+                    hoverBackgroundColor: '#5a67d8'
+                }]
+            },
+            options: {
+                ...commonOptions,
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#4a5568',
+                            font: {
+                                size: 12
+                            }
+                        },
+                        grid: {
+                            color: '#edf2f7'
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#4a5568',
+                            font: {
+                                size: 12
+                            }
+                        },
+                        grid: {
+                            color: '#edf2f7'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+});

@@ -83,14 +83,14 @@ if ($_POST && isset($_POST['login'])) {
             <input type="hidden" name="login" value="1">
 
             <div class="form-group">
-                <label for="identifier">Email, or NCIN <span class="required">*</span></label>
+                <label for="identifier">Email, or NCIN <span class="required"></span></label>
                 <input type="text" id="identifier" name="identifier"
                     value="<?php echo isset($_POST['identifier']) ? htmlspecialchars($_POST['identifier']) : ''; ?>"
                     required>
             </div>
 
             <div class="form-group">
-                <label for="password">Password <span class="required">*</span></label>
+                <label for="password">Password <span class="required"></span></label>
                 <input type="password" id="password" name="password" required>
             </div>
 

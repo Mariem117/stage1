@@ -3,53 +3,100 @@ CREATE DATABASE employee_management;
 USE employee_management;
 
 -- Users table (for both admin and employees)
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'employee') DEFAULT 'employee',
+CREATE TABLE users
+(
+    id INT
+    AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR
+    (50) UNIQUE NOT NULL,
+    email VARCHAR
+    (100) UNIQUE NOT NULL,
+    password VARCHAR
+    (255) NOT NULL,
+    role ENUM
+    ('admin', 'employee') DEFAULT 'employee',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+    UPDATE CURRENT_TIMESTAMP
+    );
 
--- Employee profiles table with civil status
-CREATE TABLE employee_profiles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    -- Employee profiles table with new columns
+    CREATE TABLE employee_profiles
+    (
+        id INT
+        AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    employee_id VARCHAR(20) UNIQUE,
-    department VARCHAR(100),
-    position VARCHAR(100),
-    phone VARCHAR(20),
-    address TEXT,
+    first_name VARCHAR
+        (50) NOT NULL,
+    last_name VARCHAR
+        (50) NOT NULL,
+    employee_id VARCHAR
+        (20) UNIQUE, -- Matricule
+    ncin VARCHAR
+        (8), -- NCIN as a single field
+    ncss_first VARCHAR
+        (8), -- NCSS first 8 digits
+    ncss_last VARCHAR
+        (2),  -- NCSS last 2 digits
+    department VARCHAR
+        (100),
+    position VARCHAR
+        (100),
+    phone VARCHAR
+        (20),
+    address VARCHAR
+        (32), -- Limited to 32 characters
     date_of_birth DATE,
+    age INT GENERATED ALWAYS AS
+        (
+        TIMESTAMPDIFF
+        (YEAR, date_of_birth, CURDATE
+        ())
+    ) STORED,
+    education VARCHAR
+        (100),
+    has_driving_license BOOLEAN DEFAULT FALSE, -- Transport
+    gender ENUM
+        ('male', 'female') NOT NULL, -- F/M
+    factory VARCHAR
+        (100),
+    civil_status ENUM
+        ('single', 'married', 'divorced', 'widowed') DEFAULT 'single',
     hire_date DATE,
-    salary DECIMAL(10,2),
-    profile_picture VARCHAR(255),
-    civil_status ENUM('single', 'married', 'divorced', 'widowed') DEFAULT 'single',
-    status ENUM('active', 'inactive') DEFAULT 'active',
+    salary DECIMAL
+        (10,2),
+    profile_picture VARCHAR
+        (255),
+    status ENUM
+        ('active', 'inactive') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+        UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY
+        (user_id) REFERENCES users
+        (id) ON
+        DELETE CASCADE
 );
 
--- Children's table to store kids' names and dates of birth
-CREATE TABLE employee_children (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+        -- Children's table to store kids' names and dates of birth
+        CREATE TABLE employee_children
+        (
+            id INT
+            AUTO_INCREMENT PRIMARY KEY,
     employee_profile_id INT NOT NULL,
-    child_name VARCHAR(100) NOT NULL,
+    child_name VARCHAR
+            (100) NOT NULL,
     child_date_of_birth DATE,
+    age INT GENERATED ALWAYS AS
+            (TIMESTAMPDIFF
+            (YEAR, date_of_birth, CURDATE
+            ())
+    ) STORED,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (employee_profile_id) REFERENCES employee_profiles(id) ON DELETE CASCADE
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+            UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (employee_profile_id) REFERENCES employee_profiles
+            (id) ON
+            DELETE CASCADE
 );
-
--- Insert default admin user
-INSERT INTO users (username, email, password, role) VALUES 
-('admin', 'admin@company.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');
-
--- Insert admin profile with civil status
-INSERT INTO employee_profiles (user_id, first_name, last_name, employee_id, department, position, civil_status) VALUES 
-(1, 'System', 'Administrator', 'EMP001', 'IT', 'System Administrator', 'single');

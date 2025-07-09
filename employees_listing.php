@@ -7,8 +7,10 @@ if ($_SESSION['role'] !== 'admin') {
     header('Location: profile.php');
     exit();
 }
+
 $error = '';
 $success = '';
+
 // Handle delete request
 if ($_POST && isset($_POST['delete_employee']) && verifyCSRFToken($_POST['csrf_token'])) {
     $user_id = intval($_POST['user_id']);
@@ -16,7 +18,7 @@ if ($_POST && isset($_POST['delete_employee']) && verifyCSRFToken($_POST['csrf_t
     try {
         $pdo->beginTransaction();
 
-        // Delete from employee_profiles (cascade will handle employee_children)
+        // Delete from users table (cascade will handle employee_profiles and employee_children)
         $stmt = $pdo->prepare("DELETE FROM users WHERE id = ? AND role != 'admin'");
         $stmt->execute([$user_id]);
 
@@ -33,7 +35,7 @@ if ($_POST && isset($_POST['delete_employee']) && verifyCSRFToken($_POST['csrf_t
     }
 }
 
-// Fetch all employees
+// Fetch all employees with their profiles and children count
 $stmt = $pdo->prepare("
     SELECT u.id, u.username, u.email, u.role, 
            ep.first_name, ep.last_name, ep.employee_id, 
@@ -50,15 +52,20 @@ $stmt = $pdo->prepare("
 $stmt->execute();
 $employees = $stmt->fetchAll();
 
-// Function to calculate age from date of birth
-function calculateAge($dob)
+// Function to format date
+function formatDate($date)
 {
-    if (!$dob)
+    if (!$date)
         return 'N/A';
-    $birthDate = new DateTime($dob);
-    $today = new DateTime();
-    $age = $today->diff($birthDate)->y;
-    return $age;
+    return date('M j, Y', strtotime($date));
+}
+
+// Function to format NCSS
+function formatNCSS($first, $last)
+{
+    if (!$first && !$last)
+        return 'N/A';
+    return ($first ?: '') . '-' . ($last ?: '');
 }
 ?>
 
@@ -69,12 +76,400 @@ function calculateAge($dob)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Employee Listing - Employee Management System</title>
-    <link rel="stylesheet" href="employees_listing.css">
-    <script>
-        function confirmDelete(employeeName) {
-            return confirm(`Are you sure you want to delete ${employeeName}'s profile? This action cannot be undone.`);
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-    </script>
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #a70202 0%, #f5f5f5 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .navbar {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .navbar-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .navbar-nav {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .nav-link {
+            color: #333;
+            text-decoration: none;
+            font-size: 1rem;
+            transition: color 0.3s, transform 0.2s;
+        }
+
+        .nav-link:hover,
+        .nav-link:focus {
+            color: #a70202;
+            transform: translateY(-2px);
+            outline: none;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            color: #fff;
+            margin-bottom: 0.5rem;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            color: #333;
+            font-size: 0.875rem;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-box {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            width: 250px;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .toggle-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid #a70202;
+            background: white;
+            color: #a70202;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn.active {
+            background: #a70202;
+            color: white;
+        }
+
+        .employee-table {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            max-height: 70vh;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+        }
+
+        th,
+        td {
+            padding: 0.75rem 0.5rem;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+            white-space: nowrap;
+        }
+
+        th {
+            background: #f8f9fa;
+            color: #333;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        td {
+            color: #555;
+        }
+
+        /* Compact view - showing only essential columns */
+        .compact-view .extra-column {
+            display: none;
+        }
+
+        /* Detailed view - showing all columns */
+        .detailed-view .table-container {
+            max-height: 60vh;
+        }
+
+        .employee-name {
+            font-weight: 600;
+            color: #333;
+            min-width: 150px;
+        }
+
+        .employee-id {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            min-width: 80px;
+        }
+
+        .status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            min-width: 150px;
+        }
+
+        .btn {
+            padding: 0.4rem 0.8rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .btn-view {
+            background: #a70202;
+            color: white;
+        }
+
+        .btn-view:hover {
+            background: #8b0000;
+            transform: translateY(-1px);
+        }
+
+        .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+
+        .alert {
+            padding: 0.75rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .empty-message {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+            font-style: italic;
+        }
+
+        /* Responsive design */
+        @media (max-width: 1200px) {
+            .container {
+                max-width: 95%;
+            }
+
+            .search-box {
+                width: 200px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .search-box {
+                width: 100%;
+            }
+
+            .view-toggle {
+                justify-content: center;
+            }
+
+            .employee-table {
+                padding: 1rem;
+            }
+
+            th,
+            td {
+                padding: 0.5rem 0.25rem;
+                font-size: 0.8rem;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+                gap: 0.25rem;
+                min-width: 100px;
+            }
+
+            .btn {
+                padding: 0.3rem 0.6rem;
+                font-size: 0.7rem;
+            }
+
+            .navbar-container {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .navbar-nav {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+
+        /* Column width optimization */
+        .col-id {
+            width: 80px;
+        }
+
+        .col-name {
+            width: 180px;
+        }
+
+        .col-department {
+            width: 120px;
+        }
+
+        .col-phone {
+            width: 120px;
+        }
+
+        .col-status {
+            width: 80px;
+        }
+
+        .col-actions {
+            width: 150px;
+        }
+
+        .col-date {
+            width: 100px;
+        }
+
+        .col-age {
+            width: 50px;
+        }
+
+        .col-education {
+            width: 100px;
+        }
+
+        .col-factory {
+            width: 100px;
+        }
+
+        .col-civil {
+            width: 100px;
+        }
+
+        .col-children {
+            width: 70px;
+        }
+
+        .col-ncin {
+            width: 100px;
+        }
+
+        .col-ncss {
+            width: 100px;
+        }
+
+        .col-address {
+            width: 150px;
+        }
+
+        .col-transport {
+            width: 80px;
+        }
+
+        .col-gender {
+            width: 60px;
+        }
+    </style>
 </head>
 
 <body>
@@ -105,72 +500,168 @@ function calculateAge($dob)
                 <div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
             <?php endif; ?>
 
+            <div class="controls">
+                <input type="text" class="search-box" placeholder="Search employees..." id="searchInput">
+                <div class="view-toggle">
+                    <button class="toggle-btn active" onclick="toggleView('compact')">Compact View</button>
+                    <button class="toggle-btn" onclick="toggleView('detailed')">Detailed View</button>
+                </div>
+            </div>
+
             <?php if (empty($employees)): ?>
-                <p>No employees found.</p>
+                <div class="empty-message">
+                    <p>No employees found.</p>
+                </div>
             <?php else: ?>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Matricule</th>
-                            <th>Name</th>
-                            <th>First Date</th>
-                            <th>NCIN</th>
-                            <th>NCSS</th>
-                            <th>Department</th>
-                            <th>Birthday</th>
-                            <th>Education</th>
-                            <th>Phone</th>
-                            <th>Address</th>
-                            <th>Age</th>
-                            <th>Transport</th>
-                            <th>F/M</th>
-                            <th>Factory</th>
-                            <th>Civil Status</th>
-                            <th>Children</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($employees as $employee): ?>
+                <div class="table-container compact-view" id="tableContainer">
+                    <table id="employeeTable">
+                        <thead>
                             <tr>
-                                <td><?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']); ?></td>
-                                <td><?php echo $employee['hire_date'] ? date('M j, Y', strtotime($employee['hire_date'])) : 'N/A'; ?>
-                                </td>
-                                <td><?php echo htmlspecialchars($employee['ncin'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars(($employee['ncss_first'] ?? '') . '-' . ($employee['ncss_last'] ?? '')); ?>
-                                </td>
-                                <td><?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?></td>
-                                <td><?php echo $employee['date_of_birth'] ? date('M j, Y', strtotime($employee['date_of_birth'])) : 'N/A'; ?>
-                                </td>
-                                <td><?php echo htmlspecialchars($employee['education'] ?? 'Not specified'); ?></td>
-                                <td><?php echo htmlspecialchars($employee['phone'] ?? 'Not specified'); ?></td>
-                                <td><?php echo htmlspecialchars($employee['address'] ?? 'Not specified'); ?></td>
-                                <td><?php echo calculateAge($employee['date_of_birth']); ?></td>
-                                <td><?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?></td>
-                                <td><?php echo htmlspecialchars(ucfirst($employee['gender'] ?? 'Not specified')); ?></td>
-                                <td><?php echo htmlspecialchars($employee['factory'] ?? 'Not specified'); ?></td>
-                                <td><?php echo htmlspecialchars(ucfirst($employee['civil_status'] ?? 'Not specified')); ?></td>
-                                <td><?php echo htmlspecialchars($employee['children_count']); ?></td>
-                                <td><?php echo htmlspecialchars(ucfirst($employee['status'] ?? 'Active')); ?></td>
-                                <td class="action-buttons">
-                                    <a href="admin_edit_employee.php?id=<?php echo $employee['id']; ?>"
-                                        class="btn btn-view">View/Edit</a>
-                                    <form method="POST" action=""
-                                        onsubmit="return confirmDelete('<?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']); ?>');">
-                                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                                        <input type="hidden" name="user_id" value="<?php echo $employee['id']; ?>">
-                                        <button type="submit" name="delete_employee" class="btn btn-delete">Delete</button>
-                                    </form>
-                                </td>
+                                <th class="col-id">Matricule</th>
+                                <th class="col-name">Name</th>
+                                <th class="col-department">Department</th>
+                                <th class="col-phone">Phone</th>
+                                <th class="col-date extra-column">Hire Date</th>
+                                <th class="col-age extra-column">Age</th>
+                                <th class="col-education extra-column">Education</th>
+                                <th class="col-factory extra-column">Factory</th>
+                                <th class="col-civil extra-column">Civil Status</th>
+                                <th class="col-children extra-column">Children</th>
+                                <th class="col-ncin extra-column">NCIN</th>
+                                <th class="col-ncss extra-column">NCSS</th>
+                                <th class="col-address extra-column">Address</th>
+                                <th class="col-transport extra-column">Transport</th>
+                                <th class="col-gender extra-column">Gender</th>
+                                <th class="col-status">Status</th>
+                                <th class="col-actions">Actions</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody id="employeeTableBody">
+                            <?php foreach ($employees as $employee): ?>
+                                <tr>
+                                    <td class="col-id">
+                                        <span
+                                            class="employee-id"><?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?></span>
+                                    </td>
+                                    <td class="col-name employee-name">
+                                        <?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>
+                                    </td>
+                                    <td class="col-department">
+                                        <?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>
+                                    </td>
+                                    <td class="col-phone"><?php echo htmlspecialchars($employee['phone'] ?? 'Not specified'); ?>
+                                    </td>
+                                    <td class="col-date extra-column"><?php echo formatDate($employee['hire_date']); ?></td>
+                                    <td class="col-age extra-column"><?php echo $employee['age'] ?? 'N/A'; ?></td>
+                                    <td class="col-education extra-column">
+                                        <?php echo htmlspecialchars($employee['education'] ?? 'Not specified'); ?>
+                                    </td>
+                                    <td class="col-factory extra-column">
+                                        <?php echo htmlspecialchars($employee['factory'] ?? 'Not specified'); ?>
+                                    </td>
+                                    <td class="col-civil extra-column">
+                                        <?php echo htmlspecialchars(ucfirst($employee['civil_status'] ?? 'Not specified')); ?>
+                                    </td>
+                                    <td class="col-children extra-column">
+                                        <?php echo htmlspecialchars($employee['children_count'] ?? '0'); ?>
+                                    </td>
+                                    <td class="col-ncin extra-column">
+                                        <?php echo htmlspecialchars($employee['ncin'] ?? 'N/A'); ?>
+                                    </td>
+                                    <td class="col-ncss extra-column">
+                                        <?php echo htmlspecialchars(formatNCSS($employee['ncss_first'], $employee['ncss_last'])); ?>
+                                    </td>
+                                    <td class="col-address extra-column">
+                                        <?php echo htmlspecialchars($employee['address'] ?? 'Not specified'); ?>
+                                    </td>
+                                    <td class="col-transport extra-column">
+                                        <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?>
+                                    </td>
+                                    <td class="col-gender extra-column">
+                                        <?php echo htmlspecialchars(strtoupper($employee['gender'] ?? 'N/A')); ?>
+                                    </td>
+                                    <td class="col-status">
+                                        <span
+                                            class="status <?php echo ($employee['status'] ?? 'active') === 'active' ? 'active' : 'inactive'; ?>">
+                                            <?php echo htmlspecialchars(ucfirst($employee['status'] ?? 'Active')); ?>
+                                        </span>
+                                    </td>
+                                    <td class="col-actions">
+                                        <div class="action-buttons">
+                                            <a href="admin_edit_employee.php?id=<?php echo $employee['id']; ?>"
+                                                class="btn btn-view">View/Edit</a>
+                                            <form method="POST" action="" style="display: inline;"
+                                                onsubmit="return confirmDelete('<?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>');">
+                                                <input type="hidden" name="csrf_token"
+                                                    value="<?php echo generateCSRFToken(); ?>">
+                                                <input type="hidden" name="user_id" value="<?php echo $employee['id']; ?>">
+                                                <button type="submit" name="delete_employee"
+                                                    class="btn btn-delete">Delete</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
     </div>
+
+    <script>
+        let currentView = 'compact';
+
+        function toggleView(view) {
+            const container = document.getElementById('tableContainer');
+            const toggleBtns = document.querySelectorAll('.toggle-btn');
+
+            // Update active button
+            toggleBtns.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Toggle view
+            if (view === 'compact') {
+                container.className = 'table-container compact-view';
+                currentView = 'compact';
+            } else {
+                container.className = 'table-container detailed-view';
+                currentView = 'detailed';
+            }
+        }
+
+        function confirmDelete(employeeName) {
+            return confirm(`Are you sure you want to delete ${employeeName}'s profile? This action cannot be undone.`);
+        }
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', function (e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#employeeTableBody tr');
+
+            rows.forEach(row => {
+                const name = row.querySelector('.employee-name').textContent.toLowerCase();
+                const department = row.cells[2].textContent.toLowerCase();
+                const phone = row.cells[3].textContent.toLowerCase();
+                const matricule = row.cells[0].textContent.toLowerCase();
+
+                if (name.includes(searchTerm) || department.includes(searchTerm) ||
+                    phone.includes(searchTerm) || matricule.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+
+        // Initialize compact view
+        document.addEventListener('DOMContentLoaded', function () {
+            const container = document.getElementById('tableContainer');
+            if (container) {
+                container.className = 'table-container compact-view';
+            }
+        });
+    </script>
 </body>
 
 </html>

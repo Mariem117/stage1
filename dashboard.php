@@ -15,18 +15,6 @@ $stmt = $pdo->prepare("SELECT COUNT(*) as inactive_employees FROM employee_profi
 $stmt->execute();
 $inactive_employees = $stmt->fetchColumn();
 
-// Get recent employees
-$stmt = $pdo->prepare("
-    SELECT u.username, ep.first_name, ep.last_name, ep.employee_id, ep.department, ep.hire_date, ep.status
-    FROM users u 
-    JOIN employee_profiles ep ON u.id = ep.user_id 
-    WHERE u.role = 'employee'
-    ORDER BY ep.created_at DESC 
-    LIMIT 5
-");
-$stmt->execute();
-$recent_employees = $stmt->fetchAll();
-
 // Get departments count
 $stmt = $pdo->prepare("
     SELECT department, COUNT(*) as count 
@@ -36,6 +24,44 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute();
 $departments = $stmt->fetchAll();
+
+// Get gender distribution
+$stmt = $pdo->prepare("
+    SELECT gender, COUNT(*) as count 
+    FROM employee_profiles 
+    WHERE user_id != 1 
+    GROUP BY gender
+");
+$stmt->execute();
+$gender_data = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Get education level distribution
+$stmt = $pdo->prepare("
+    SELECT education, COUNT(*) as count 
+    FROM employee_profiles 
+    WHERE user_id != 1 AND education IS NOT NULL AND education != '' 
+    GROUP BY education
+");
+$stmt->execute();
+$education_data = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Get age segmentation (approximate based on date_of_birth)
+$stmt = $pdo->prepare("
+    SELECT 
+        CASE 
+            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 18 AND 29 THEN '18-29'
+            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 30 AND 40 THEN '30-40'
+            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 41 AND 55 THEN '41-55'
+            WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) >= 56 THEN '56-70'
+            ELSE 'Unknown'
+        END as age_group,
+        COUNT(*) as count 
+    FROM employee_profiles 
+    WHERE user_id != 1 AND date_of_birth IS NOT NULL 
+    GROUP BY age_group
+");
+$stmt->execute();
+$age_data = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 ?>
 
 <!DOCTYPE html>
@@ -46,6 +72,15 @@ $departments = $stmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Employee Management System</title>
     <link rel="stylesheet" href="dashboard.css">
+    <style>
+        .chart-container {
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            max-width: 100%;
+        }
+    </style>
 </head>
 
 <body>
@@ -85,44 +120,19 @@ $departments = $stmt->fetchAll();
 
         <div class="dashboard-grid">
             <div class="card">
-                <h2>Recent Employees</h2>
-                <div class="quick-actions">
-                    <a href="employees_listing.php" class="btn btn-small">View All Employees</a>
-                    <a href="add_employee.php" class="btn btn-small">Add New Employee</a>
+                <h2>Diversity Analytics</h2>
+                <div class="chart-container">
+                    <h3>Comparative Gender Distribution</h3>
+                    <canvas id="genderChart"></canvas>
                 </div>
-
-                <?php if ($recent_employees): ?>
-                    <table class="employee-table">
-                        <thead>
-                            <tr>
-                                <th>Employee ID</th>
-                                <th>Name</th>
-                                <th>Department</th>
-                                <th>Hire Date</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($recent_employees as $employee): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($employee['employee_id']); ?></td>
-                                    <td><?php echo htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']); ?>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?></td>
-                                    <td><?php echo $employee['hire_date'] ? date('M j, Y', strtotime($employee['hire_date'])) : 'N/A'; ?>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-<?php echo $employee['status']; ?>">
-                                            <?php echo ucfirst($employee['status']); ?>
-                                        </span>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <p>No employees found.</p>
-                <?php endif; ?>
+                <div class="chart-container">
+                    <h3>Employees by Education Level</h3>
+                    <canvas id="educationChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Employees Age Segmentation</h3>
+                    <canvas id="ageChart"></canvas>
+                </div>
             </div>
 
             <div class="card">
@@ -142,6 +152,15 @@ $departments = $stmt->fetchAll();
             </div>
         </div>
     </div>
+
+    <script>
+        // Pass PHP data to JavaScript
+        const genderData = <?php echo json_encode($gender_data); ?>;
+        const educationData = <?php echo json_encode($education_data); ?>;
+        const ageData = <?php echo json_encode($age_data); ?>;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="dashboard.js"></script>
 </body>
 
 </html>
