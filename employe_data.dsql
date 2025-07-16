@@ -2,7 +2,7 @@
 CREATE DATABASE employee_management;
 USE employee_management;
 
--- Users table (for both admin and employees)
+--- Users table (for both admin and employees)
 CREATE TABLE users
 (
     id INT
@@ -20,7 +20,7 @@ CREATE TABLE users
     UPDATE CURRENT_TIMESTAMP
     );
 
-    -- Employee profiles table with new columns
+    -- Employee profiles table with all requested attributes
     CREATE TABLE employee_profiles
     (
         id INT
@@ -31,13 +31,15 @@ CREATE TABLE users
     last_name VARCHAR
         (50) NOT NULL,
     employee_id VARCHAR
-        (20) UNIQUE, -- Matricule
+        (20) UNIQUE,
     ncin VARCHAR
-        (8), -- NCIN as a single field
-    ncss_first VARCHAR
-        (8), -- NCSS first 8 digits
-    ncss_last VARCHAR
-        (2),  -- NCSS last 2 digits
+        (8),
+    cin_image VARCHAR
+        (255), -- Added for storing CIN image path
+    cnss_first VARCHAR
+        (8),
+    cnss_last VARCHAR
+        (2),
     department VARCHAR
         (100),
     position VARCHAR
@@ -45,21 +47,19 @@ CREATE TABLE users
     phone VARCHAR
         (20),
     address VARCHAR
-        (32), -- Limited to 32 characters
+        (32),
     date_of_birth DATE,
-    age INT GENERATED ALWAYS AS
-        (
-        TIMESTAMPDIFF
-        (YEAR, date_of_birth, CURDATE
-        ())
-    ) STORED,
     education VARCHAR
         (100),
-    has_driving_license BOOLEAN DEFAULT FALSE, -- Transport
+    has_driving_license BOOLEAN DEFAULT FALSE,
+    driving_licence_category VARCHAR
+        (50), -- Added for driving license category
+    driving_licence_image VARCHAR
+        (255), -- Added for storing driving license image path
     gender ENUM
-        ('male', 'female') NOT NULL, -- F/M
+        ('male', 'female') NOT NULL,
     factory VARCHAR
-        (100),
+        (10),
     civil_status ENUM
         ('single', 'married', 'divorced', 'widowed') DEFAULT 'single',
     hire_date DATE,
@@ -68,7 +68,8 @@ CREATE TABLE users
     profile_picture VARCHAR
         (255),
     status ENUM
-        ('active', 'inactive') DEFAULT 'active',
+        ('active', 'inactive','dismissed') DEFAULT 'active',
+        dismissal_reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
         UPDATE CURRENT_TIMESTAMP,
@@ -84,14 +85,11 @@ CREATE TABLE users
             id INT
             AUTO_INCREMENT PRIMARY KEY,
     employee_profile_id INT NOT NULL,
-    child_name VARCHAR
+    child_first_name VARCHAR
+            (100) NOT NULL,
+    child_second_name VARCHAR
             (100) NOT NULL,
     child_date_of_birth DATE,
-    age INT GENERATED ALWAYS AS
-            (TIMESTAMPDIFF
-            (YEAR, date_of_birth, CURDATE
-            ())
-    ) STORED,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
             UPDATE CURRENT_TIMESTAMP,

@@ -1,3 +1,4 @@
+
 document.addEventListener('DOMContentLoaded', function () {
     // Color palette for charts
     const colors = {
@@ -18,12 +19,7 @@ document.addEventListener('DOMContentLoaded', function () {
         colors.secondary,
         colors.accent,
         colors.warning,
-        colors.info,
-        colors.purple,
-        colors.pink,
-        colors.teal,
-        colors.orange,
-        colors.gray
+        colors.info
     ];
 
     // Common chart options
@@ -180,19 +176,30 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Monthly Revenue Chart (keeping the original)
-    const revenueCtx = document.getElementById('myChart');
-    if (revenueCtx) {
-        new Chart(revenueCtx, {
+    // Department Distribution Chart
+    const departmentCtx = document.getElementById('departmentChart');
+    if (departmentCtx && typeof departmentData !== 'undefined') {
+        const departmentLabels = ['IT', 'HR', 'Finance', 'Marketing', 'Operations'];
+        const departmentValues = departmentLabels.map(label => departmentData[label] || 0);
+        
+        new Chart(departmentCtx, {
             type: 'bar',
             data: {
-                labels: ['January', 'February', 'March', 'April'],
+                labels: departmentLabels,
                 datasets: [{
-                    label: 'Monthly Revenue',
-                    data: [1200, 1900, 3000, 2500],
-                    backgroundColor: colors.primary,
-                    borderRadius: 8,
-                    hoverBackgroundColor: '#5a67d8'
+                    label: 'Number of Employees',
+                    data: departmentValues,
+                    backgroundColor: chartColors,
+                    borderColor: chartColors,
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    hoverBackgroundColor: chartColors.map(color => color.replace(/^\w+/, c => {
+                        let rgb = parseInt(c.slice(1), 16);
+                        let r = (rgb >> 16) & 255;
+                        let g = (rgb >> 8) & 255;
+                        let b = rgb & 255;
+                        return `rgb(${Math.max(r - 20, 0)}, ${Math.max(g - 20, 0)}, ${Math.max(b - 20, 0)})`;
+                    }))
                 }]
             },
             options: {
@@ -202,7 +209,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         ticks: {
                             color: '#4a5568',
                             font: {
-                                size: 12
+                                size: 11
                             }
                         },
                         grid: {
@@ -213,7 +220,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         ticks: {
                             color: '#4a5568',
                             font: {
-                                size: 12
+                                size: 11
                             }
                         },
                         grid: {

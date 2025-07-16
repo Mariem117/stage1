@@ -35,15 +35,41 @@ if ($_POST && isset($_POST['delete_employee']) && verifyCSRFToken($_POST['csrf_t
     }
 }
 
-// Fetch all employees with their profiles and children count
+// Handle status update request
+if ($_POST && isset($_POST['update_status']) && verifyCSRFToken($_POST['csrf_token'])) {
+    $user_id = intval($_POST['user_id']);
+    $new_status = in_array($_POST['status'], ['active', 'inactive', 'dismissed']) ? $_POST['status'] : 'active';
+    $dismissal_reason = $_POST['status'] === 'dismissed' ? ($_POST['dismissal_reason'] ?? '') : '';
+
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare("UPDATE employee_profiles SET status = ?, dismissal_reason = ? WHERE user_id = ?");
+        $stmt->execute([$new_status, $dismissal_reason, $user_id]);
+
+        if ($stmt->rowCount() > 0) {
+            $pdo->commit();
+            $success = 'Employee status updated successfully!';
+        } else {
+            $pdo->rollBack();
+            $error = 'Failed to update status. Employee not found.';
+        }
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $error = 'Status update failed: ' . $e->getMessage();
+    }
+}
+
+// Fetch all employees with their profiles
 $stmt = $pdo->prepare("
     SELECT u.id, u.username, u.email, u.role, 
-           ep.first_name, ep.last_name, ep.employee_id, 
-           ep.ncin, ep.ncss_first, ep.ncss_last,
+           ep.id as profile_id, ep.user_id, ep.first_name, ep.last_name, ep.employee_id, 
+           ep.ncin, ep.cin_image_front, ep.cin_image_back, ep.cnss_first, ep.cnss_last,
            ep.department, ep.position, ep.phone, ep.address,
-           ep.date_of_birth, ep.age, ep.education, ep.has_driving_license,
-           ep.gender, ep.factory, ep.civil_status, ep.hire_date, ep.status,
-           (SELECT COUNT(*) FROM employee_children ec WHERE ec.employee_profile_id = ep.id) as children_count
+           ep.date_of_birth, ep.education, ep.has_driving_license,
+           ep.driving_licence_category, ep.driving_licence_image,
+           ep.gender, ep.factory, ep.civil_status, ep.children, ep.hire_date, 
+           ep.salary, ep.profile_picture, ep.status, ep.dismissal_reason,
+           ep.created_at, ep.updated_at
     FROM users u 
     LEFT JOIN employee_profiles ep ON u.id = ep.user_id
     WHERE u.role = 'employee'
@@ -67,6 +93,25 @@ function formatNCSS($first, $last)
         return 'N/A';
     return ($first ?: '') . '-' . ($last ?: '');
 }
+
+// Function to format salary
+function formatSalary($salary)
+{
+    if (!$salary)
+        return 'N/A';
+    return '$' . number_format($salary, 2);
+}
+
+// Function to calculate age
+function calculateAge($dateOfBirth)
+{
+    if (!$dateOfBirth)
+        return 'N/A';
+    $today = new DateTime();
+    $birthDate = new DateTime($dateOfBirth);
+    $age = $today->diff($birthDate)->y;
+    return $age;
+}
 ?>
 
 <!DOCTYPE html>
@@ -85,7 +130,7 @@ function formatNCSS($first, $last)
 
         body {
             font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #a70202 0%, #f5f5f5 100%);
+            background: linear-gradient(135deg, #a70202 0%, rgb(0, 0, 0) 100%);
             min-height: 100vh;
             padding: 20px;
             color: #333;
@@ -151,7 +196,7 @@ function formatNCSS($first, $last)
         }
 
         .header p {
-            color: #333;
+            color: rgb(255, 255, 255);
             font-size: 0.875rem;
         }
 
@@ -234,12 +279,10 @@ function formatNCSS($first, $last)
             color: #555;
         }
 
-        /* Compact view - showing only essential columns */
         .compact-view .extra-column {
             display: none;
         }
 
-        /* Detailed view - showing all columns */
         .detailed-view .table-container {
             max-height: 60vh;
         }
@@ -275,6 +318,11 @@ function formatNCSS($first, $last)
         .status.inactive {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        .status.dismissed {
+            background: #fff3cd;
+            color: #856404;
         }
 
         .action-buttons {
@@ -344,7 +392,27 @@ function formatNCSS($first, $last)
             font-style: italic;
         }
 
-        /* Responsive design */
+        .profile-pic {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .cin-image {
+            width: 30px;
+            height: 20px;
+            object-fit: cover;
+            border-radius: 2px;
+        }
+
+        .license-image {
+            width: 30px;
+            height: 20px;
+            object-fit: cover;
+            border-radius: 2px;
+        }
+
         @media (max-width: 1200px) {
             .container {
                 max-width: 95%;
@@ -401,7 +469,11 @@ function formatNCSS($first, $last)
             }
         }
 
-        /* Column width optimization */
+        /* Column width definitions */
+        .col-profile-pic {
+            width: 60px;
+        }
+
         .col-id {
             width: 80px;
         }
@@ -410,7 +482,31 @@ function formatNCSS($first, $last)
             width: 180px;
         }
 
+        .col-employee-id {
+            width: 100px;
+        }
+
+        .col-ncin {
+            width: 120px;
+        }
+
+        .col-cin-front {
+            width: 80px;
+        }
+
+        .col-cin-back {
+            width: 80px;
+        }
+
+        .col-cnss {
+            width: 120px;
+        }
+
         .col-department {
+            width: 120px;
+        }
+
+        .col-position {
             width: 120px;
         }
 
@@ -418,15 +514,11 @@ function formatNCSS($first, $last)
             width: 120px;
         }
 
-        .col-status {
-            width: 80px;
-        }
-
-        .col-actions {
+        .col-address {
             width: 150px;
         }
 
-        .col-date {
+        .col-dob {
             width: 100px;
         }
 
@@ -438,6 +530,22 @@ function formatNCSS($first, $last)
             width: 100px;
         }
 
+        .col-license {
+            width: 80px;
+        }
+
+        .col-license-cat {
+            width: 100px;
+        }
+
+        .col-license-img {
+            width: 80px;
+        }
+
+        .col-gender {
+            width: 80px;
+        }
+
         .col-factory {
             width: 100px;
         }
@@ -447,27 +555,35 @@ function formatNCSS($first, $last)
         }
 
         .col-children {
-            width: 70px;
-        }
-
-        .col-ncin {
-            width: 100px;
-        }
-
-        .col-ncss {
-            width: 100px;
-        }
-
-        .col-address {
-            width: 150px;
-        }
-
-        .col-transport {
             width: 80px;
         }
 
-        .col-gender {
-            width: 60px;
+        .col-hire-date {
+            width: 100px;
+        }
+
+        .col-salary {
+            width: 100px;
+        }
+
+        .col-status {
+            width: 100px;
+        }
+
+        .col-dismissal {
+            width: 150px;
+        }
+
+        .col-created {
+            width: 100px;
+        }
+
+        .col-updated {
+            width: 100px;
+        }
+
+        .col-actions {
+            width: 150px;
         }
     </style>
 </head>
@@ -517,75 +633,116 @@ function formatNCSS($first, $last)
                     <table id="employeeTable">
                         <thead>
                             <tr>
-                                <th class="col-id">Matricule</th>
+                                <th class="col-profile-pic extra-column">Photo</th>
+                                <th class="col-employee-id">Matricule</th>
                                 <th class="col-name">Name</th>
-                                <th class="col-department">Department</th>
-                                <th class="col-phone">Phone</th>
-                                <th class="col-date extra-column">Hire Date</th>
+                                <th class="col-gender extra-column">Gender</th>
+                                <th class="col-dob extra-column">Date of Birth</th>
                                 <th class="col-age extra-column">Age</th>
+                                <th class="col-department">Department</th>
+                                <th class="col-position extra-column">Position</th>
+                                <th class="col-phone">Phone</th>
+                                <th class="col-address extra-column">Address</th>
                                 <th class="col-education extra-column">Education</th>
-                                <th class="col-factory extra-column">Factory</th>
                                 <th class="col-civil extra-column">Civil Status</th>
                                 <th class="col-children extra-column">Children</th>
                                 <th class="col-ncin extra-column">NCIN</th>
-                                <th class="col-ncss extra-column">NCSS</th>
-                                <th class="col-address extra-column">Address</th>
-                                <th class="col-transport extra-column">Transport</th>
-                                <th class="col-gender extra-column">Gender</th>
+                                <th class="col-cin-front extra-column">CIN Front</th>
+                                <th class="col-cin-back extra-column">CIN Back</th>
+                                <th class="col-cnss extra-column">CNSS</th>
+                                <th class="col-license extra-column">Has License</th>
+                                <th class="col-license-cat extra-column">License Category</th>
+                                <th class="col-license-img extra-column">License Image</th>
+                                <th class="col-factory extra-column">Factory</th>
+                                <th class="col-hire-date extra-column">Hire Date</th>
+                                <th class="col-salary extra-column">Salary</th>
                                 <th class="col-status">Status</th>
+                                <th class="col-dismissal extra-column">Dismissal Reason</th>
+                                <th class="col-created extra-column">Created</th>
+                                <th class="col-updated extra-column">Updated</th>
                                 <th class="col-actions">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="employeeTableBody">
                             <?php foreach ($employees as $employee): ?>
                                 <tr>
-                                    <td class="col-id">
-                                        <span
-                                            class="employee-id"><?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?></span>
+                                    <td class="col-profile-pic extra-column">
+                                        <?php if ($employee['profile_picture']): ?>
+                                            <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>"
+                                                class="profile-pic" alt="Profile Picture">
+                                        <?php else: ?>
+                                            N/A
+                                        <?php endif; ?>
                                     </td>
+                                    <td class="col-employee-id employee-id">
+                                        <?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?></td>
                                     <td class="col-name employee-name">
                                         <?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>
                                     </td>
-                                    <td class="col-department">
-                                        <?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>
+                                    <td class="col-gender extra-column">
+                                        <?php echo htmlspecialchars($employee['gender'] ?? 'N/A'); ?></td>
+                                    <td class="col-dob extra-column"><?php echo formatDate($employee['date_of_birth']); ?></td>
+                                    <td class="col-age extra-column"><?php echo calculateAge($employee['date_of_birth']); ?>
                                     </td>
-                                    <td class="col-phone"><?php echo htmlspecialchars($employee['phone'] ?? 'Not specified'); ?>
+                                    <td class="col-department"><?php echo htmlspecialchars($employee['department'] ?? 'N/A'); ?>
                                     </td>
-                                    <td class="col-date extra-column"><?php echo formatDate($employee['hire_date']); ?></td>
-                                    <td class="col-age extra-column"><?php echo $employee['age'] ?? 'N/A'; ?></td>
+                                    <td class="col-position extra-column">
+                                        <?php echo htmlspecialchars($employee['position'] ?? 'N/A'); ?></td>
+                                    <td class="col-phone"><?php echo htmlspecialchars($employee['phone'] ?? 'N/A'); ?></td>
+                                    <td class="col-address extra-column">
+                                        <?php echo htmlspecialchars($employee['address'] ?? 'N/A'); ?></td>
                                     <td class="col-education extra-column">
-                                        <?php echo htmlspecialchars($employee['education'] ?? 'Not specified'); ?>
+                                        <?php echo htmlspecialchars($employee['education'] ?? 'N/A'); ?></td>
+                                    <td class="col-civil extra-column">
+                                        <?php echo htmlspecialchars($employee['civil_status'] ?? 'N/A'); ?></td>
+                                    <td class="col-children extra-column">
+                                        <?php echo htmlspecialchars($employee['children'] ?? '0'); ?></td>
+                                    <td class="col-ncin extra-column">
+                                        <?php echo htmlspecialchars($employee['ncin'] ?? 'N/A'); ?></td>
+                                    <td class="col-cin-front extra-column">
+                                        <?php if ($employee['cin_image_front']): ?>
+                                            <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
+                                                class="cin-image" alt="CIN Front">
+                                        <?php else: ?>
+                                            N/A
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="col-cin-back extra-column">
+                                        <?php if ($employee['cin_image_back']): ?>
+                                            <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>"
+                                                class="cin-image" alt="CIN Back">
+                                        <?php else: ?>
+                                            N/A
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="col-cnss extra-column">
+                                        <?php echo formatNCSS($employee['cnss_first'], $employee['cnss_last']); ?></td>
+                                    <td class="col-license extra-column">
+                                        <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?></td>
+                                    <td class="col-license-cat extra-column">
+                                        <?php echo htmlspecialchars($employee['driving_licence_category'] ?? 'N/A'); ?></td>
+                                    <td class="col-license-img extra-column">
+                                        <?php if ($employee['driving_licence_image']): ?>
+                                            <img src="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>"
+                                                class="license-image" alt="License">
+                                        <?php else: ?>
+                                            N/A
+                                        <?php endif; ?>
                                     </td>
                                     <td class="col-factory extra-column">
-                                        <?php echo htmlspecialchars($employee['factory'] ?? 'Not specified'); ?>
+                                        <?php echo htmlspecialchars($employee['factory'] ?? 'N/A'); ?></td>
+                                    <td class="col-hire-date extra-column"><?php echo formatDate($employee['hire_date']); ?>
                                     </td>
-                                    <td class="col-civil extra-column">
-                                        <?php echo htmlspecialchars(ucfirst($employee['civil_status'] ?? 'Not specified')); ?>
-                                    </td>
-                                    <td class="col-children extra-column">
-                                        <?php echo htmlspecialchars($employee['children_count'] ?? '0'); ?>
-                                    </td>
-                                    <td class="col-ncin extra-column">
-                                        <?php echo htmlspecialchars($employee['ncin'] ?? 'N/A'); ?>
-                                    </td>
-                                    <td class="col-ncss extra-column">
-                                        <?php echo htmlspecialchars(formatNCSS($employee['ncss_first'], $employee['ncss_last'])); ?>
-                                    </td>
-                                    <td class="col-address extra-column">
-                                        <?php echo htmlspecialchars($employee['address'] ?? 'Not specified'); ?>
-                                    </td>
-                                    <td class="col-transport extra-column">
-                                        <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?>
-                                    </td>
-                                    <td class="col-gender extra-column">
-                                        <?php echo htmlspecialchars(strtoupper($employee['gender'] ?? 'N/A')); ?>
-                                    </td>
+                                    <td class="col-salary extra-column"><?php echo formatSalary($employee['salary']); ?></td>
                                     <td class="col-status">
-                                        <span
-                                            class="status <?php echo ($employee['status'] ?? 'active') === 'active' ? 'active' : 'inactive'; ?>">
-                                            <?php echo htmlspecialchars(ucfirst($employee['status'] ?? 'Active')); ?>
+                                        <span class="status <?php echo htmlspecialchars($employee['status'] ?? 'active'); ?>">
+                                            <?php echo htmlspecialchars($employee['status'] ?? 'Active'); ?>
                                         </span>
                                     </td>
+                                    <td class="col-dismissal extra-column">
+                                        <?php echo htmlspecialchars($employee['dismissal_reason'] ?? 'N/A'); ?></td>
+                                    <td class="col-created extra-column"><?php echo formatDate($employee['created_at']); ?></td>
+                                    <td class="col-updated extra-column"><?php echo formatDate($employee['updated_at']); ?></td>
                                     <td class="col-actions">
                                         <div class="action-buttons">
                                             <a href="admin_edit_employee.php?id=<?php echo $employee['id']; ?>"
@@ -616,11 +773,9 @@ function formatNCSS($first, $last)
             const container = document.getElementById('tableContainer');
             const toggleBtns = document.querySelectorAll('.toggle-btn');
 
-            // Update active button
             toggleBtns.forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
 
-            // Toggle view
             if (view === 'compact') {
                 container.className = 'table-container compact-view';
                 currentView = 'compact';
@@ -634,16 +789,15 @@ function formatNCSS($first, $last)
             return confirm(`Are you sure you want to delete ${employeeName}'s profile? This action cannot be undone.`);
         }
 
-        // Search functionality
         document.getElementById('searchInput').addEventListener('input', function (e) {
             const searchTerm = e.target.value.toLowerCase();
             const rows = document.querySelectorAll('#employeeTableBody tr');
 
             rows.forEach(row => {
                 const name = row.querySelector('.employee-name').textContent.toLowerCase();
-                const department = row.cells[2].textContent.toLowerCase();
-                const phone = row.cells[3].textContent.toLowerCase();
-                const matricule = row.cells[0].textContent.toLowerCase();
+                const department = row.cells[6].textContent.toLowerCase(); // Department column
+                const phone = row.cells[8].textContent.toLowerCase(); // Phone column
+                const matricule = row.cells[1].textContent.toLowerCase(); // Employee ID column
 
                 if (name.includes(searchTerm) || department.includes(searchTerm) ||
                     phone.includes(searchTerm) || matricule.includes(searchTerm)) {
@@ -654,7 +808,6 @@ function formatNCSS($first, $last)
             });
         });
 
-        // Initialize compact view
         document.addEventListener('DOMContentLoaded', function () {
             const container = document.getElementById('tableContainer');
             if (container) {
