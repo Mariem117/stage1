@@ -1,17 +1,10 @@
 <?php
 require_once 'config.php';
 
-// Redirect if already logged in
-if (isLoggedIn()) {
-    header('Location: dashboard.php');
-    exit();
-}
-
 $error = '';
 $success = '';
 $child_error = '';
 
-// Function to calculate age from date of birth
 function calculateAge($dob)
 {
     if (!$dob)
@@ -19,44 +12,41 @@ function calculateAge($dob)
     $birthDate = new DateTime($dob);
     $today = new DateTime();
     $age = $today->diff($birthDate)->y;
-    return $age >= 0 ? $age : null; // Ensure valid age
+    return $age >= 0 ? $age : null;
 }
 
-// Function to validate children data
 function validateChildren($children)
 {
     $errors = [];
-
     if (!empty($children)) {
         foreach ($children as $index => $child) {
             $childNum = $index + 1;
-
-            // Check if child name is provided
-            if (empty(trim($child['name']))) {
-                $errors[] = "Child #{$childNum}: Name is required";
+            if (empty(trim($child['child_first_name']))) {
+                $errors[] = "Child #{$childNum}: First name is required";
             }
-
-            // Check if date of birth is provided and valid
-            if (empty($child['dob'])) {
+            if (empty(trim($child['child_second_name']))) {
+                $errors[] = "Child #{$childNum}: Second name is required";
+            }
+            if (empty($child['child_date_of_birth'])) {
                 $errors[] = "Child #{$childNum}: Date of birth is required";
             } else {
-                $childAge = calculateAge($child['dob']);
+                $childAge = calculateAge($child['child_date_of_birth']);
                 if ($childAge === null || $childAge < 0 || $childAge > 25) {
                     $errors[] = "Child #{$childNum}: Invalid date of birth";
                 }
             }
-
-            // Validate name format
-            if (!empty(trim($child['name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['name']))) {
-                $errors[] = "Child #{$childNum}: Name can only contain letters and spaces";
+            if (!empty(trim($child['child_first_name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['child_first_name']))) {
+                $errors[] = "Child #{$childNum}: First name can only contain letters and spaces";
+            }
+            if (!empty(trim($child['child_second_name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['child_second_name']))) {
+                $errors[] = "Child #{$childNum}: Second name can only contain letters and spaces";
             }
         }
     }
-
     return $errors;
 }
 
-// Handle registration form submission
+
 if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])) {
     $username = sanitize($_POST['username']);
     $email = sanitize($_POST['email']);
@@ -127,19 +117,19 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
         }
     }
 
-    // Handle children data
     $children = [];
     if ($civil_status === 'married' && isset($_POST['children']) && is_array($_POST['children'])) {
         foreach ($_POST['children'] as $child) {
-            if (!empty(trim($child['name'])) || !empty($child['dob'])) {
+            // Check if any child field has data
+            if (!empty(trim($child['child_first_name'])) || !empty(trim($child['child_second_name'])) || !empty($child['child_date_of_birth'])) {
                 $children[] = [
-                    'name' => sanitize(trim($child['name'])),
-                    'dob' => $child['dob']
+                    'child_first_name' => sanitize(trim($child['child_first_name'])),
+                    'child_second_name' => sanitize(trim($child['child_second_name'])),
+                    'child_date_of_birth' => $child['child_date_of_birth']
                 ];
             }
         }
     }
-    $factory = sanitize($_POST['factory']);
 
     // Validation
     if (empty($username) || empty($email) || empty($password) || empty($first_name) || empty($last_name) || empty($civil_status) || empty($gender)) {
@@ -165,26 +155,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
     } elseif (strlen($address) > 32) {
         $error = 'Address must not exceed 32 characters';
     }
-    // Validation
-    if (empty($username) || empty($email) || empty($password) || empty($first_name) || empty($last_name) || empty($civil_status) || empty($gender)) {
-        $error = 'Please fill in all required fields';
-    } elseif ($password !== $confirm_password) {
-        $error = 'Passwords do not match';
-    } elseif (strlen($password) < 6 || !preg_match('/[A-Za-z]/', $password) || !preg_match('/[0-9]/', $password)) {
-        $error = 'Password must be at least 6 characters long and contain at least one letter and one number';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address';
-    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $username)) {
-        $error = 'Username can only contain letters, numbers, and underscores';
-    } elseif (!empty($ncss_first) && (strlen($ncss_first) !== 8 || !ctype_digit($ncss_first))) {
-        $error = 'NCSS first part must be exactly 8 digits';
-    } elseif (!empty($ncss_last) && (strlen($ncss_last) !== 2 || !ctype_digit($ncss_last))) {
-        $error = 'NCSS last part must be exactly 2 digits';
-    } elseif (strlen($address) > 32) {
-        $error = 'Address must not exceed 32 characters';
-    }
 
-    // Validate children if married
     if (!$error && $civil_status === 'married') {
         $childErrors = validateChildren($children);
         if (!empty($childErrors)) {
@@ -212,7 +183,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
 
                     $pdo->beginTransaction();
 
-                    $stmt = $pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'admin')");
+                    $stmt = $pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'employee')");
                     $stmt->execute([$username, $email, $hashed_password]);
                     $user_id = $pdo->lastInsertId();
 
@@ -252,20 +223,22 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     ]);
                     $profile_id = $pdo->lastInsertId();
 
-
-                    // Insert children if any (children table)
+                    // Insert children with correct database schema
                     if (!empty($children)) {
-                        $stmt = $pdo->prepare("INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth) VALUES (?, ?, ?, ?)");
+                        $stmt = $pdo->prepare("INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
                         foreach ($children as $child) {
-                            $stmt->execute([$profile_id, $child['first_name'], $child['second_name'], $child['dob']]);
+                            $stmt->execute([
+                                $profile_id,
+                                $child['child_first_name'],
+                                $child['child_second_name'],
+                                $child['child_date_of_birth']
+                            ]);
                         }
                     }
 
-                    // Commit transaction
                     $pdo->commit();
-
-                    $success = 'Registration successful! You can now log in.';
-                    $_POST = array(); // Clear form data
+                    $success = 'Employee registration successful! You can now log in.';
+                    $_POST = array();
                 }
             }
         } catch (Exception $e) {
@@ -292,6 +265,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             <h1>Employee Registration</h1>
             <p>Create your employee account</p>
         </div>
+
 
         <?php if ($error): ?>
             <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
@@ -369,6 +343,9 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                                 class="required">*</span></label>
                         <input type="file" id="cin_image_front" name="cin_image_front" class="file-upload-input"
                             accept="image/*" onchange="previewImage(this, 'cin_front_preview')" required>
+                        <div class="file-preview" id="cin_front_preview">
+                            <div class="file-info" id="cin_front_info"></div>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -433,13 +410,13 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     value="<?php echo isset($_POST['education']) ? htmlspecialchars($_POST['education']) : ''; ?>"
                     required>
             </div>
-
-            <div class="form-group">
-                <label for="has_driving_license">Has Driving License</label>
-                <input type="checkbox" id="has_driving_license" name="has_driving_license"
-                    onchange="toggleDrivingLicenseSection()" <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license']) ? 'checked' : ''; ?>>
+            <div class="upload-row">
+                <div class="form-group">
+                    <label for="has_driving_license">Has Driving License</label>
+                    <input type="checkbox" id="has_driving_license" name="has_driving_license"
+                        onchange="toggleDrivingLicenseSection()" <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license']) ? 'checked' : ''; ?>>
+                </div>
             </div>
-
             <!-- Driving License Section -->
             <div id="driving-license-section"
                 class="driving-license-section <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license']) ? 'show' : ''; ?>">
@@ -447,20 +424,21 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     <label for="driving_licence_category">Driving License Category</label>
                     <select id="driving_licence_category" name="driving_licence_category">
                         <option value="">Select Category</option>
-                        <option value="A" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'A') ? 'selected' : ''; ?>>1 (Motorcycle)</option>
+                        <option value="A" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'A') ? 'selected' : ''; ?>>A (Motorcycle)</option>
                         <option value="B" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'B') ? 'selected' : ''; ?>>B (Car)</option>
                         <option value="C" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'C') ? 'selected' : ''; ?>>C (Truck)</option>
                         <option value="D" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'D') ? 'selected' : ''; ?>>D (Bus)</option>
                     </select>
                 </div>
-
-                <div class="form-group">
-                    <label class="file-upload-label" for="driving_licence_image">Driving License Image</label>
-                    <input type="file" id="driving_licence_image" name="driving_licence_image" class="file-upload-input"
-                        accept="image/*" onchange="previewImage(this, 'license_preview')">
-                    <div class="file-preview" id="license_preview">
-                        <img id="license_img" src="" alt="License Preview">
-                        <div class="file-info" id="license_info"></div>
+                <div class="upload-row">
+                    <div class="form-group">
+                        <label class="file-upload-label" for="driving_licence_image">Driving License Image</label>
+                        <input type="file" id="driving_licence_image" name="driving_licence_image"
+                            class="file-upload-input" accept="image/*" onchange="previewImage(this, 'license_preview')">
+                        <div class="file-preview" id="license_preview">
+                            <img id="license_img" src="" alt="License Preview">
+                            <div class="file-info" id="license_info"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -512,16 +490,16 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                 <div id="children-container" class="children-container">
                     <?php if (isset($_POST['children']) && is_array($_POST['children'])): ?>
                         <?php foreach ($_POST['children'] as $index => $child): ?>
-                            <?php if (!empty(trim($child['first_name'])) || !empty(trim($child['second_name'])) || !empty($child['dob'])): ?>
+                            <?php if (!empty(trim($child['child_first_name'])) || !empty(trim($child['child_second_name'])) || !empty($child['child_date_of_birth'])): ?>
                                 <div class="child-row">
-                                    <input type="text" name="children[<?php echo $index; ?>][first_name]"
+                                    <input type="text" name="children[<?php echo $index; ?>][child_first_name]"
                                         placeholder="Child's First Name"
-                                        value="<?php echo htmlspecialchars($child['first_name']); ?>">
-                                    <input type="text" name="children[<?php echo $index; ?>][second_name]"
+                                        value="<?php echo htmlspecialchars($child['child_first_name']); ?>">
+                                    <input type="text" name="children[<?php echo $index; ?>][child_second_name]"
                                         placeholder="Child's Second Name"
-                                        value="<?php echo htmlspecialchars($child['second_name']); ?>">
-                                    <input type="date" name="children[<?php echo $index; ?>][dob]"
-                                        value="<?php echo htmlspecialchars($child['dob']); ?>">
+                                        value="<?php echo htmlspecialchars($child['child_second_name']); ?>">
+                                    <input type="date" name="children[<?php echo $index; ?>][child_date_of_birth]"
+                                        value="<?php echo htmlspecialchars($child['child_date_of_birth']); ?>">
                                     <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
                                 </div>
                             <?php endif; ?>
@@ -611,9 +589,9 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             const row = document.createElement('div');
             row.className = 'child-row';
             row.innerHTML = `
-                <input type="text" name="children[${childrenCount}][first_name]" placeholder="Child's First Name" required>
-                <input type="text" name="children[${childrenCount}][second_name]" placeholder="Child's Second Name" required>
-                <input type="date" name="children[${childrenCount}][dob]" required>
+                <input type="text" name="children[${childrenCount}][child_first_name]" placeholder="Child's First Name" required>
+                <input type="text" name="children[${childrenCount}][child_second_name]" placeholder="Child's Second Name" required>
+                <input type="date" name="children[${childrenCount}][child_date_of_birth]" required>
                 <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
             `;
             container.appendChild(row);
@@ -628,13 +606,13 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             const childRows = container.querySelectorAll('.child-row');
 
             childRows.forEach((row, index) => {
-                const firstNameInput = row.querySelector('input[name*="first_name"]');
-                const secondNameInput = row.querySelector('input[name*="second_name"]');
-                const dobInput = row.querySelector('input[type="date"]');
+                const firstNameInput = row.querySelector('input[name*="child_first_name"]');
+                const secondNameInput = row.querySelector('input[name*="child_second_name"]');
+                const dobInput = row.querySelector('input[name*="child_date_of_birth"]');
 
-                firstNameInput.name = `children[${index}][first_name]`;
-                secondNameInput.name = `children[${index}][second_name]`;
-                dobInput.name = `children[${index}][dob]`;
+                firstNameInput.name = `children[${index}][child_first_name]`;
+                secondNameInput.name = `children[${index}][child_second_name]`;
+                dobInput.name = `children[${index}][child_date_of_birth]`;
             });
         }
 

@@ -21,24 +21,24 @@ function validateChildren($children)
     if (!empty($children)) {
         foreach ($children as $index => $child) {
             $childNum = $index + 1;
-            if (empty(trim($child['first_name']))) {
+            if (empty(trim($child['child_first_name']))) {
                 $errors[] = "Child #{$childNum}: First name is required";
             }
-            if (empty(trim($child['second_name']))) {
+            if (empty(trim($child['child_second_name']))) {
                 $errors[] = "Child #{$childNum}: Second name is required";
             }
-            if (empty($child['dob'])) {
+            if (empty($child['child_date_of_birth'])) {
                 $errors[] = "Child #{$childNum}: Date of birth is required";
             } else {
-                $childAge = calculateAge($child['dob']);
+                $childAge = calculateAge($child['child_date_of_birth']);
                 if ($childAge === null || $childAge < 0 || $childAge > 25) {
                     $errors[] = "Child #{$childNum}: Invalid date of birth";
                 }
             }
-            if (!empty(trim($child['first_name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['first_name']))) {
+            if (!empty(trim($child['child_first_name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['child_first_name']))) {
                 $errors[] = "Child #{$childNum}: First name can only contain letters and spaces";
             }
-            if (!empty(trim($child['second_name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['second_name']))) {
+            if (!empty(trim($child['child_second_name'])) && !preg_match('/^[a-zA-Z\s]+$/', trim($child['child_second_name']))) {
                 $errors[] = "Child #{$childNum}: Second name can only contain letters and spaces";
             }
         }
@@ -116,14 +116,16 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
         }
     }
 
+    // Fixed children data processing to match database schema
     $children = [];
     if ($civil_status === 'married' && isset($_POST['children']) && is_array($_POST['children'])) {
         foreach ($_POST['children'] as $child) {
-            if (!empty(trim($child['first_name'])) || !empty(trim($child['second_name'])) || !empty($child['dob'])) {
+            // Check if any child field has data
+            if (!empty(trim($child['child_first_name'])) || !empty(trim($child['child_second_name'])) || !empty($child['child_date_of_birth'])) {
                 $children[] = [
-                    'first_name' => sanitize(trim($child['first_name'])),
-                    'second_name' => sanitize(trim($child['second_name'])),
-                    'dob' => $child['dob']
+                    'child_first_name' => sanitize(trim($child['child_first_name'])),
+                    'child_second_name' => sanitize(trim($child['child_second_name'])),
+                    'child_date_of_birth' => $child['child_date_of_birth']
                 ];
             }
         }
@@ -221,11 +223,16 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     ]);
                     $profile_id = $pdo->lastInsertId();
 
-                    // Insert children if any
+                    // Insert children with correct database schema
                     if (!empty($children)) {
-                        $stmt = $pdo->prepare("INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth) VALUES (?, ?, ?, ?)");
+                        $stmt = $pdo->prepare("INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
                         foreach ($children as $child) {
-                            $stmt->execute([$profile_id, $child['first_name'], $child['second_name'], $child['dob']]);
+                            $stmt->execute([
+                                $profile_id,
+                                $child['child_first_name'],
+                                $child['child_second_name'],
+                                $child['child_date_of_birth']
+                            ]);
                         }
                     }
 
@@ -483,16 +490,16 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                 <div id="children-container" class="children-container">
                     <?php if (isset($_POST['children']) && is_array($_POST['children'])): ?>
                         <?php foreach ($_POST['children'] as $index => $child): ?>
-                            <?php if (!empty(trim($child['first_name'])) || !empty(trim($child['second_name'])) || !empty($child['dob'])): ?>
+                            <?php if (!empty(trim($child['child_first_name'])) || !empty(trim($child['child_second_name'])) || !empty($child['child_date_of_birth'])): ?>
                                 <div class="child-row">
-                                    <input type="text" name="children[<?php echo $index; ?>][first_name]"
+                                    <input type="text" name="children[<?php echo $index; ?>][child_first_name]"
                                         placeholder="Child's First Name"
-                                        value="<?php echo htmlspecialchars($child['first_name']); ?>">
-                                    <input type="text" name="children[<?php echo $index; ?>][second_name]"
+                                        value="<?php echo htmlspecialchars($child['child_first_name']); ?>">
+                                    <input type="text" name="children[<?php echo $index; ?>][child_second_name]"
                                         placeholder="Child's Second Name"
-                                        value="<?php echo htmlspecialchars($child['second_name']); ?>">
-                                    <input type="date" name="children[<?php echo $index; ?>][dob]"
-                                        value="<?php echo htmlspecialchars($child['dob']); ?>">
+                                        value="<?php echo htmlspecialchars($child['child_second_name']); ?>">
+                                    <input type="date" name="children[<?php echo $index; ?>][child_date_of_birth]"
+                                        value="<?php echo htmlspecialchars($child['child_date_of_birth']); ?>">
                                     <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
                                 </div>
                             <?php endif; ?>
@@ -582,9 +589,9 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             const row = document.createElement('div');
             row.className = 'child-row';
             row.innerHTML = `
-                <input type="text" name="children[${childrenCount}][first_name]" placeholder="Child's First Name" required>
-                <input type="text" name="children[${childrenCount}][second_name]" placeholder="Child's Second Name" required>
-                <input type="date" name="children[${childrenCount}][dob]" required>
+                <input type="text" name="children[${childrenCount}][child_first_name]" placeholder="Child's First Name" required>
+                <input type="text" name="children[${childrenCount}][child_second_name]" placeholder="Child's Second Name" required>
+                <input type="date" name="children[${childrenCount}][child_date_of_birth]" required>
                 <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
             `;
             container.appendChild(row);
@@ -599,13 +606,13 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             const childRows = container.querySelectorAll('.child-row');
 
             childRows.forEach((row, index) => {
-                const firstNameInput = row.querySelector('input[name*="first_name"]');
-                const secondNameInput = row.querySelector('input[name*="second_name"]');
-                const dobInput = row.querySelector('input[type="date"]');
+                const firstNameInput = row.querySelector('input[name*="child_first_name"]');
+                const secondNameInput = row.querySelector('input[name*="child_second_name"]');
+                const dobInput = row.querySelector('input[name*="child_date_of_birth"]');
 
-                firstNameInput.name = `children[${index}][first_name]`;
-                secondNameInput.name = `children[${index}][second_name]`;
-                dobInput.name = `children[${index}][dob]`;
+                firstNameInput.name = `children[${index}][child_first_name]`;
+                secondNameInput.name = `children[${index}][child_second_name]`;
+                dobInput.name = `children[${index}][child_date_of_birth]`;
             });
         }
 

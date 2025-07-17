@@ -568,20 +568,22 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                             </div>
                             <div class="form-group">
                                 <label>Remove</label>
-                                <input type="checkbox" class="remove-child" name="remove_child[]"
-                                    value="<?php echo $child['id']; ?>">
+                                <button type="button" class="remove-child"
+                                    onclick="removeChildRow(this, <?php echo $child['id']; ?>)">×</button>
+
                             </div>
                         </div>
                     <?php endforeach; ?>
                     <div id="new-children"></div>
                     <button type="button" class="btn btn-secondary" id="add-child">Add Child</button>
                 </div>
-
-                <div class="form-actions">
-                    <button type="submit" name="update_profile" class="btn">Update Profile</button>
-                </div>
-            </form>
         </div>
+
+        <div class="form-actions">
+            <button type="submit" name="update_profile" class="btn">Update Profile</button>
+        </div>
+        </form>
+    </div>
     </div>
 
     <script>
@@ -605,11 +607,43 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                 </div>
                 <div class="form-group">
                     <label>Remove</label>
-                    <button type="button" class="remove-child btn btn-secondary" onclick="this.parentElement.parentElement.remove()">Remove</button>
+                <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
                 </div>
             `;
             container.appendChild(newRow);
         });
+        function addChildRow() {
+            const container = document.getElementById('children-container');
+            const childrenCount = container.children.length;
+
+            const row = document.createElement('div');
+            row.className = 'child-row';
+            row.innerHTML = `
+                <input type="text" name="children[${childrenCount}][child_first_name]" placeholder="Child's First Name" required>
+                <input type="text" name="children[${childrenCount}][child_second_name]" placeholder="Child's Second Name" required>
+                <input type="date" name="children[${childrenCount}][child_date_of_birth]" required>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeChildRow(button, childId = null) {
+            const row = button.closest('.child-row');
+            if (childId) {
+                // Mark for deletion
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'remove_child[]';
+                input.value = childId;
+                row.appendChild(input);
+                // Optionally hide the row instead of removing it
+                row.style.display = 'none';
+            } else {
+                // Remove new (unsaved) child row
+                row.remove();
+            }
+
+            // Re-index only visible children rows if needed (optional)
+        }
     </script>
 </body>
 

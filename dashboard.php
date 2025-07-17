@@ -170,10 +170,6 @@ foreach ($results as $dept => $count) {
                 <h3>Department Distribution</h3>
                 <canvas id="departmentChart"></canvas>
             </div>
-            <div class="chart-container">
-                <h3>Average Salary by Department</h3>
-                <canvas id="salaryChart"></canvas>
-            </div>
         </div>
     </div>
 
