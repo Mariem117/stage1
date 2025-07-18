@@ -88,6 +88,7 @@ foreach ($results as $dept => $count) {
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
+                <a href="" class="nav-link">Notifications</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

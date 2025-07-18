@@ -363,6 +363,13 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
         }
     }
 }
+
+// Helper function to check if file is an image
+function isImage($filename) {
+    $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+    $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    return in_array($extension, $imageExtensions);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -415,7 +422,7 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
             <form method="POST" action="" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
 
-                <div class="form-row \">
+                <div class="form-row">
                     <div class="form-group readonly">
                         <label for="employee_id">Employee ID</label>
                         <input type="text" id="employee_id"
@@ -459,35 +466,111 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                             value="<?php echo htmlspecialchars($employee['date_of_birth'] ?? ''); ?>">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="profile_picture">Profile Picture</label>
-                    <input type="file" id="profile_picture" name="profile_picture" accept="image/jpeg,image/png">
-                    <?php if ($employee['profile_picture']): ?>
-                        <p>Current: <a href="<?php echo htmlspecialchars($employee['profile_picture']); ?>"
-                                target="_blank">View Profile Picture</a></p>
-                    <?php endif; ?>
+
+                <!-- Enhanced Profile Picture Section -->
+                <div class="form-section">
+                    <div class="section-header">
+                        <div class="section-icon">👤</div>
+                        <h3>Profile Picture</h3>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile_picture">Profile Picture</label>
+                        <div class="file-upload-container">
+                            <div class="file-upload-wrapper">
+                                <?php if ($employee['profile_picture'] && isImage($employee['profile_picture'])): ?>
+                                    <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>" 
+                                         alt="Current Profile Picture" 
+                                         class="profile-picture-preview"
+                                         onclick="openImageModal(this.src)">
+                                <?php endif; ?>
+                                <div class="file-input-wrapper">
+                                    <input type="file" id="profile_picture" name="profile_picture" 
+                                           accept="image/jpeg,image/png" class="file-input">
+                                    <label for="profile_picture" class="file-input-label <?php echo $employee['profile_picture'] ? 'has-file' : ''; ?>">
+                                        <?php echo $employee['profile_picture'] ? 'Change Picture' : 'Choose Picture'; ?>
+                                    </label>
+                                </div>
+                            </div>
+                            <?php if ($employee['profile_picture']): ?>
+                                <div class="current-file-info">
+                                    <div class="file-icon">📷</div>
+                                    <a href="<?php echo htmlspecialchars($employee['profile_picture']); ?>" 
+                                       target="_blank">View Current Picture</a>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="ncin">NCIN</label>
                         <input type="text" id="ncin" name="ncin"
                             value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
                     </div>
-                    <div class="form-group">
-                        <label for="cin_image_front">CIN Image (Front)</label>
-                        <input type="file" id="cin_image_front" name="cin_image_front" accept="image/jpeg,image/png">
-                        <?php if ($employee['cin_image_front']): ?>
-                            <p>Current: <a href="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
-                                    target="_blank">View CIN Image (Front)</a></p>
-                        <?php endif; ?>
+                </div>
+
+                <!-- Enhanced CIN Images Section -->
+                <div class="form-section">
+                    <div class="section-header">
+                        <div class="section-icon">🆔</div>
+                        <h3>CIN Images</h3>
                     </div>
-                     <div class="form-group">
-                        <label for="cin_image_back">CIN Image (Back)</label>
-                        <input type="file" id="cin_image_back" name="cin_image_back" accept="image/jpeg,image/png">
-                        <?php if ($employee['cin_image_back']): ?>
-                            <p>Current: <a href="<?php echo htmlspecialchars($employee['cin_image_back']); ?>"
-                                    target="_blank">View CIN Image (Back)</a></p>
-                        <?php endif; ?>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cin_image_front">CIN Image (Front)</label>
+                            <div class="file-upload-container">
+                                <div class="file-upload-wrapper">
+                                    <?php if ($employee['cin_image_front'] && isImage($employee['cin_image_front'])): ?>
+                                        <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>" 
+                                             alt="CIN Front" 
+                                             class="image-preview"
+                                             onclick="openImageModal(this.src)">
+                                    <?php endif; ?>
+                                    <div class="file-input-wrapper">
+                                        <input type="file" id="cin_image_front" name="cin_image_front" 
+                                               accept="image/jpeg,image/png" class="file-input">
+                                        <label for="cin_image_front" class="file-input-label <?php echo $employee['cin_image_front'] ? 'has-file' : ''; ?>">
+                                            <?php echo $employee['cin_image_front'] ? 'Change Image' : 'Choose Image'; ?>
+                                        </label>
+                                    </div>
+                                </div>
+                                <?php if ($employee['cin_image_front']): ?>
+                                    <div class="current-file-info">
+                                        <div class="file-icon">📄</div>
+                                        <a href="<?php echo htmlspecialchars($employee['cin_image_front']); ?>" 
+                                           target="_blank">View CIN Front</a>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="cin_image_back">CIN Image (Back)</label>
+                            <div class="file-upload-container">
+                                <div class="file-upload-wrapper">
+                                    <?php if ($employee['cin_image_back'] && isImage($employee['cin_image_back'])): ?>
+                                        <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>" 
+                                             alt="CIN Back" 
+                                             class="image-preview"
+                                             onclick="openImageModal(this.src)">
+                                    <?php endif; ?>
+                                    <div class="file-input-wrapper">
+                                        <input type="file" id="cin_image_back" name="cin_image_back" 
+                                               accept="image/jpeg,image/png" class="file-input">
+                                        <label for="cin_image_back" class="file-input-label <?php echo $employee['cin_image_back'] ? 'has-file' : ''; ?>">
+                                            <?php echo $employee['cin_image_back'] ? 'Change Image' : 'Choose Image'; ?>
+                                        </label>
+                                    </div>
+                                </div>
+                                <?php if ($employee['cin_image_back']): ?>
+                                    <div class="current-file-info">
+                                        <div class="file-icon">📄</div>
+                                        <a href="<?php echo htmlspecialchars($employee['cin_image_back']); ?>" 
+                                           target="_blank">View CIN Back</a>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -502,25 +585,28 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                         <input type="text" id="cnss_last" name="cnss_last" maxlength="2" pattern="\d{2}"
                             value="<?php echo htmlspecialchars($employee['cnss_last'] ?? ''); ?>">
                     </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="education">Education</label>
-                        <input type="text" id="education" name="education"
-                            value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
-                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="education">Education</label>
+                    <input type="text" id="education" name="education"
+                        value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
+                </div>
 
                 <div class="form-group">
                     <label>Has Driving License</label>
-                    <label>
-                        <input type="radio" name="has_driving_license" value="1"
-                            <?php echo (isset($employee['has_driving_license']) && $employee['has_driving_license'] == '1') ? 'checked' : ''; ?>>
-                        Yes
-                    </label>
-                    <label>
-                        <input type="radio" name="has_driving_license" value="0"
-                            <?php echo (!isset($employee['has_driving_license']) || $employee['has_driving_license'] == '0') ? 'checked' : ''; ?>>
-                        No
-                    </label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="has_driving_license" value="1"
+                                <?php echo (isset($employee['has_driving_license']) && $employee['has_driving_license'] == '1') ? 'checked' : ''; ?>>
+                            Yes
+                        </label>
+                        <label>
+                            <input type="radio" name="has_driving_license" value="0"
+                                <?php echo (!isset($employee['has_driving_license']) || $employee['has_driving_license'] == '0') ? 'checked' : ''; ?>>
+                            No
+                        </label>
+                    </div>
                 </div>
 
                 <div class="form-group" id="driving-license-section">
@@ -529,345 +615,243 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                         value="<?php echo htmlspecialchars($employee['driving_licence_category'] ?? ''); ?>">
                 </div>
 
-                <div class="form-group">
-                    <label for="driving_licence_image">Driving License Image</label>
-                    <input type="file" id="driving_licence_image" name="driving_licence_image"
-                        accept="image/jpeg,image/png">
-                    <?php if ($employee['driving_licence_image']): ?>
-                        <p>Current: <a href="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>"
-                                target="_blank">View Driving License Image</a></p>
-                    <?php endif; ?>
+                <!-- Enhanced Driving License Image Section -->
+                <div class="form-section" id="driving-license-image-section">
+                    <div class="section-header">
+                        <div class="section-icon">🚗</div>
+                        <h3>Driving License</h3>
+                    </div>
+                    <div class="form-group">
+                        <label for="driving_licence_image">Driving License Image</label>
+                        <div class="file-upload-container">
+                            <div class="file-upload-wrapper">
+                                <?php if ($employee['driving_licence_image'] && isImage($employee['driving_licence_image'])): ?>
+                                    <img src="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>" 
+                                         alt="Driving License" 
+                                         class="image-preview"
+                                         onclick="openImageModal(this.src)">
+                                <?php endif; ?>
+                                <div class="file-input-wrapper">
+                                    <input type="file" id="driving_licence_image" name="driving_licence_image" 
+                                           accept="image/jpeg,image/png" class="file-input">
+                                    <label for="driving_licence_image" class="file-input-label <?php echo $employee['driving_licence_image'] ? 'has-file' : ''; ?>">
+                                        <?php echo $employee['driving_licence_image'] ? 'Change License' : 'Choose License'; ?>
+                                    </label>
+                                </div>
+                            </div>
+                            <?php if ($employee['driving_licence_image']): ?>
+                                <div class="current-file-info">
+                                    <div class="file-icon">🚗</div>
+                                    <a href="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>" 
+                                       target="_blank">View Current License</a>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
-
 
                 <div class="form-group">
                     <label for="gender">Gender <span class="required">*</span></label>
-                    <select id="gender" name="gender" required>
-                        <option value="male" <?php echo ($employee['gender'] === 'male') ? 'selected' : ''; ?>>Male
-                        </option>
-                        <option value="female" <?php echo ($employee['gender'] === 'female') ? 'selected' : ''; ?>>Female
-                        </option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="factory">Factory <span class="required">*</span></label>
-                    <select id="factory" name="factory" required>
-                        <option value="1" <?php echo ($employee['factory'] === '1') ? 'selected' : ''; ?>>Factory 1
-                        </option>
-                        <option value="2" <?php echo ($employee['factory'] === '2') ? 'selected' : ''; ?>>Factory 2
-                        </option>
-                        <option value="3" <?php echo ($employee['factory'] === '3') ? 'selected' : ''; ?>>Factory 3
-                        </option>
-                        <option value="4" <?php echo ($employee['factory'] === '4') ? 'selected' : ''; ?>>Factory 4
-                        </option>
-                    </select>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group readonly">
-                        <label for="department">Department</label>
-                        <input type="text" id="department"
-                            value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>"
-                            readonly>
+                        <select id="gender" name="gender" required>
+                            <option value="male" <?php echo ($employee['gender'] === 'male') ? 'selected' : ''; ?>>Male
+                            </option>
+                            <option value="female" <?php echo ($employee['gender'] === 'female') ? 'selected' : ''; ?>>
+                                Female
+                            </option>
+                        </select>
                     </div>
-                    <div class="form-group readonly">
-                        <label for="position">Position</label>
-                        <input type="text" id="position"
-                            value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>" readonly>
+
+                    <div class="form-group">
+                        <label for="factory">Factory <span class="required">*</span></label>
+                        <select id="factory" name="factory" required>
+                            <option value="1" <?php echo ($employee['factory'] === '1') ? 'selected' : ''; ?>>Factory 1
+                            </option>
+                            <option value="2" <?php echo ($employee['factory'] === '2') ? 'selected' : ''; ?>>Factory 2
+                            </option>
+                            <option value="3" <?php echo ($employee['factory'] === '3') ? 'selected' : ''; ?>>Factory 3
+                            </option>
+                            <option value="4" <?php echo ($employee['factory'] === '4') ? 'selected' : ''; ?>>Factory 4
+                            </option>
+                        </select>
                     </div>
-                </div>
 
-                <div class="form-group">
-                    <label for="address">Address</label>
-                    <textarea id="address" name="address" maxlength="32"
-                        placeholder="Enter your full address"><?php echo htmlspecialchars($employee['address'] ?? ''); ?></textarea>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group readonly">
-                        <label for="hire_date">Hire Date</label>
-                        <input type="text" id="hire_date"
-                            value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>"
-                            readonly>
-                    </div>
-                    <div class="form-group readonly">
-                        <label for="status">Status</label>
-                        <input type="text" id="status" value="<?php echo ucfirst($employee['status'] ?? 'active'); ?>"
-                            readonly>
-                    </div>
-                </div>
-
-                <div class="form-group readonly">
-                    <label for="salary">Salary</label>
-                    <input type="text" id="salary"
-                        value="<?php echo htmlspecialchars($employee['salary'] ?? 'Not specified'); ?>" readonly>
-                </div>
-
-                <div class="form-group readonly">
-                    <label for="dismissal_reason">Dismissal Reason</label>
-                    <textarea id="dismissal_reason"
-                        readonly><?php echo htmlspecialchars($employee['dismissal_reason'] ?? 'None'); ?></textarea>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group readonly">
-                        <label for="created_at">Created At</label>
-                        <input type="text" id="created_at"
-                            value="<?php echo $employee['created_at'] ? date('F j, Y H:i:s', strtotime($employee['created_at'])) : 'Not specified'; ?>"
-                            readonly>
-                    </div>
-                    <div class="form-group readonly">
-                        <label for="updated_at">Updated At</label>
-                        <input type="text" id="updated_at"
-                            value="<?php echo $employee['updated_at'] ? date('F j, Y H:i:s', strtotime($employee['updated_at'])) : 'Not specified'; ?>"
-                            readonly>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="civil_status">Civil Status <span class="required">*</span></label>
-                    <select id="civil_status" name="civil_status" required>
-                        <option value="single" <?php echo ($employee['civil_status'] === 'single') ? 'selected' : ''; ?>>
-                            Single</option>
-                        <option value="married" <?php echo ($employee['civil_status'] === 'married') ? 'selected' : ''; ?>>Married</option>
-                        <option value="divorced" <?php echo ($employee['civil_status'] === 'divorced') ? 'selected' : ''; ?>>Divorced</option>
-                        <option value="widowed" <?php echo ($employee['civil_status'] === 'widowed') ? 'selected' : ''; ?>>Widowed</option>
-                    </select>
-                </div>
-
-                <div class="children-container">
-                    <h3>Children</h3>
-                    <?php foreach ($children as $index => $child): ?>
-                        <div class="child-row" data-child-id="<?php echo $child['id']; ?>">
-                            <div class="form-group">
-                                <label for="child_first_name_<?php echo $child['id']; ?>">Child First Name</label>
-                                <input type="text" id="child_first_name_<?php echo $child['id']; ?>"
-                                    name="children[<?php echo $index; ?>][child_first_name]"
-                                    value="<?php echo htmlspecialchars($child['child_first_name']); ?>">
-                                <input type="hidden" name="children[<?php echo $index; ?>][id]"
-                                    value="<?php echo $child['id']; ?>">
-                            </div>
-                            <div class="form-group">
-                                <label for="child_second_name_<?php echo $child['id']; ?>">Child Second Name</label>
-                                <input type="text" id="child_second_name_<?php echo $child['id']; ?>"
-                                    name="children[<?php echo $index; ?>][child_second_name]"
-                                    value="<?php echo htmlspecialchars($child['child_second_name']); ?>">
-                            </div>
-                            <div class="form-group">
-                                <label for="child_date_of_birth_<?php echo $child['id']; ?>">Birth Date</label>
-                                <input type="date" id="child_date_of_birth_<?php echo $child['id']; ?>"
-                                    name="children[<?php echo $index; ?>][child_date_of_birth]"
-                                    value="<?php echo htmlspecialchars($child['child_date_of_birth']); ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>Remove</label>
-                                <button type="button" class="remove-child"
-                                    onclick="removeChildRow(this, <?php echo $child['id']; ?>)">×</button>
-                            </div>
+                    <div class="form-row">
+                        <div class="form-group readonly">
+                            <label for="department">Department</label>
+                            <input type="text" id="department"
+                                value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>"
+                                readonly>
                         </div>
-                    <?php endforeach; ?>
-                    <div id="new-children"></div>
-                    <button type="button" class="btn btn-secondary" id="add-child">Add Child</button>
-                </div>
+                        <div class="form-group readonly">
+                            <label for="position">Position</label>
+                            <input type="text" id="position"
+                                value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>"
+                                readonly>
+                        </div>
+                    </div>
 
-                <div class="form-actions">
-                    <button type="submit" name="update_profile" class="btn">Update Profile</button>
-                </div>
+                    <div class="form-group">
+                        <label for="address">Address</label>
+                        <textarea id="address" name="address" maxlength="32"
+                            placeholder="Enter your full address"><?php echo htmlspecialchars($employee['address'] ?? ''); ?></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group readonly">
+                            <label for="hire_date">Hire Date</label>
+                            <input type="text" id="hire_date"
+                                value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>"
+                                readonly>
+                        </div>
+                        <div class="form-group readonly">
+                            <label for="status">Status</label>
+                            <input type="text" id="status"
+                                value="<?php echo ucfirst($employee['status'] ?? 'active'); ?>" readonly>
+                        </div>
+                    </div>
+
+                    <div class="form-group readonly">
+                        <label for="salary">Salary</label>
+                        <input type="text" id="salary"
+                            value="<?php echo htmlspecialchars($employee['salary'] ?? 'Not specified'); ?>" readonly>
+                    </div>
+
+                    <div class="form-group readonly">
+                        <label for="dismissal_reason">Dismissal Reason</label>
+                        <textarea id="dismissal_reason"
+                            readonly><?php echo htmlspecialchars($employee['dismissal_reason'] ?? 'N/A'); ?></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group readonly">
+                            <label for="created_at">Created At</label>
+                            <input type="text" id="created_at"
+                                value="<?php echo $employee['created_at'] ? date('F j, Y H:i:s', strtotime($employee['created_at'])) : 'Not specified'; ?>"
+                                readonly>
+                        </div>
+                        <div class="form-group readonly">
+                            <label for="updated_at">Updated At</label>
+                            <input type="text" id="updated_at"
+                                value="<?php echo $employee['updated_at'] ? date('F j, Y H:i:s', strtotime($employee['updated_at'])) : 'Not specified'; ?>"
+                                readonly>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="civil_status">Civil Status <span class="required">*</span></label>
+                        <select id="civil_status" name="civil_status" required>
+                            <option value="single" <?php echo ($employee['civil_status'] === 'single') ? 'selected' : ''; ?>>
+                                Single</option>
+                            <option value="married" <?php echo ($employee['civil_status'] === 'married') ? 'selected' : ''; ?>>Married</option>
+                            <option value="divorced" <?php echo ($employee['civil_status'] === 'divorced') ? 'selected' : ''; ?>>Divorced</option>
+                            <option value="widowed" <?php echo ($employee['civil_status'] === 'widowed') ? 'selected' : ''; ?>>Widowed</option>
+                        </select>
+                    </div>
+
+                    <div class="children-container">
+                        <h3>Children</h3>
+                        <?php foreach ($children as $index => $child): ?>
+                            <div class="child-row" data-child-id="<?php echo $child['id']; ?>">
+                                <div class="form-group">
+                                    <label for="child_first_name_<?php echo $child['id']; ?>">Child First Name</label>
+                                    <input type="text" id="child_first_name_<?php echo $child['id']; ?>"
+                                        name="children[<?php echo $index; ?>][child_first_name]"
+                                        value="<?php echo htmlspecialchars($child['child_first_name']); ?>">
+                                    <input type="hidden" name="children[<?php echo $index; ?>][id]"
+                                        value="<?php echo $child['id']; ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="child_second_name_<?php echo $child['id']; ?>">Child Second Name</label>
+                                    <input type="text" id="child_second_name_<?php echo $child['id']; ?>"
+                                        name="children[<?php echo $index; ?>][child_second_name]"
+                                        value="<?php echo htmlspecialchars($child['child_second_name']); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="child_date_of_birth_<?php echo $child['id']; ?>">Birth Date</label>
+                                    <input type="date" id="child_date_of_birth_<?php echo $child['id']; ?>"
+                                        name="children[<?php echo $index; ?>][child_date_of_birth]"
+                                        value="<?php echo htmlspecialchars($child['child_date_of_birth']); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label>Remove</label>
+                                    <button type="button" class="remove-child"
+                                        onclick="removeChildRow(this, <?php echo $child['id']; ?>)">×</button>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div id="new-children"></div>
+                        <button type="button" class="btn btn-secondary" id="add-child">Add Child</button>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" name="update_profile" class="btn">Update Profile</button>
+                    </div>
             </form>
         </div>
     </div>
 
     <script>
-        // Replace the existing JavaScript section in your profile.php file with this corrected version
-
-        let childCounter = 0;
-
-        // Initialize child counter based on existing children
-        document.addEventListener('DOMContentLoaded', function () {
-            const existingChildren = document.querySelectorAll('.child-row[data-child-id]');
-            childCounter = existingChildren.length;
-        });
-
         // Add new child row
         document.getElementById('add-child').addEventListener('click', function () {
             const container = document.getElementById('new-children');
+            const index = document.querySelectorAll('.child-row').length;
             const newRow = document.createElement('div');
             newRow.className = 'child-row';
-            newRow.setAttribute('data-new-child', 'true');
-
             newRow.innerHTML = `
-        <div class="form-group">
-            <label for="child_first_name_new_${childCounter}">Child First Name</label>
-            <input type="text" id="child_first_name_new_${childCounter}" name="children[${childCounter}][child_first_name]" required>
-        </div>
-        <div class="form-group">
-            <label for="child_second_name_new_${childCounter}">Child Second Name</label>
-            <input type="text" id="child_second_name_new_${childCounter}" name="children[${childCounter}][child_second_name]" required>
-        </div>
-        <div class="form-group">
-            <label for="child_date_of_birth_new_${childCounter}">Birth Date</label>
-            <input type="date" id="child_date_of_birth_new_${childCounter}" name="children[${childCounter}][child_date_of_birth]" required>
-        </div>
-        <div class="form-group">
-            <label>Remove</label>
-            <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
-        </div>
-    `;
-
+                <div class="form-group">
+                    <label for="child_first_name_new_${index}">Child First Name</label>
+                    <input type="text" id="child_first_name_new_${index}" name="children[${index}][child_first_name]">
+                </div>
+                <div class="form-group">
+                    <label for="child_second_name_new_${index}">Child Second Name</label>
+                    <input type="text" id="child_second_name_new_${index}" name="children[${index}][child_second_name]">
+                </div>
+                <div class="form-group">
+                    <label for="child_date_of_birth_new_${index}">Birth Date</label>
+                    <input type="date" id="child_date_of_birth_new_${index}" name="children[${index}][child_date_of_birth]">
+                </div>
+                <div class="form-group">
+                    <label>Remove</label>
+                    <button type="button" class="remove-child" onclick="removeChildRow(this)">×</button>
+                </div>
+            `;
             container.appendChild(newRow);
-            childCounter++;
-
-            // Re-index all children after adding
-            reindexChildRows();
         });
 
-        // Remove child row
+        // Remove child row and re-index remaining rows
         function removeChildRow(button, childId = null) {
             const row = button.closest('.child-row');
-
             if (childId) {
                 // Mark existing child for deletion
                 const input = document.createElement('input');
                 input.type = 'hidden';
                 input.name = 'remove_child[]';
                 input.value = childId;
-                document.querySelector('form').appendChild(input);
-
-                // Hide the row instead of removing it
-                row.style.display = 'none';
-                row.setAttribute('data-removed', 'true');
-
-                // Clear the input names to prevent them from being submitted
-                const inputs = row.querySelectorAll('input[name^="children"]');
-                inputs.forEach(input => {
-                    input.name = input.name.replace('children[', 'removed_children[');
-                });
+                row.appendChild(input);
+                row.style.display = 'none'; // Hide the row
             } else {
-                // Remove new (unsaved) child row completely
+                // Remove new (unsaved) child row
                 row.remove();
             }
 
-            // Re-index remaining visible rows
+            // Re-index all visible child rows
             reindexChildRows();
         }
 
         // Re-index child rows to ensure consistent array indices
         function reindexChildRows() {
-            const visibleRows = document.querySelectorAll('.child-row:not([style*="display: none"]):not([data-removed="true"])');
-
-            visibleRows.forEach((row, index) => {
-                const inputs = row.querySelectorAll('input[name^="children"]');
+            const rows = document.querySelectorAll('.child-row:not([style*="display: none"])');
+            rows.forEach((row, index) => {
+                const inputs = row.querySelectorAll('input[name]');
                 inputs.forEach(input => {
                     const name = input.name;
                     if (name.startsWith('children[')) {
-                        // Extract the field name (e.g., 'child_first_name', 'child_second_name', etc.)
-                        const fieldName = name.split('][')[1].replace(']', '');
-                        const newName = `children[${index}][${fieldName}]`;
+                        const newName = name.replace(/children\[\d+\]/, `children[${index}]`);
                         input.name = newName;
-
-                        // Update the ID as well
-                        const oldId = input.id;
-                        if (oldId) {
-                            const newId = oldId.replace(/_\d+$/, `_${index}`);
-                            input.id = newId;
-
-                            // Update the corresponding label
-                            const label = row.querySelector(`label[for="${oldId}"]`);
-                            if (label) {
-                                label.setAttribute('for', newId);
-                            }
-                        }
                     }
                 });
-
-                // Update hidden ID input if it exists
-                const hiddenId = row.querySelector('input[name^="children"][name$="[id]"]');
-                if (hiddenId) {
-                    hiddenId.name = `children[${index}][id]`;
-                }
             });
         }
-
-        // Add form validation before submission
-        document.querySelector('form').addEventListener('submit', function (e) {
-            const childRows = document.querySelectorAll('.child-row:not([style*="display: none"]):not([data-removed="true"])');
-
-            for (let i = 0; i < childRows.length; i++) {
-                const row = childRows[i];
-                const firstName = row.querySelector('input[name$="[child_first_name]"]');
-                const secondName = row.querySelector('input[name$="[child_second_name]"]');
-                const birthDate = row.querySelector('input[name$="[child_date_of_birth]"]');
-
-                // Check if any field is filled
-                const hasData = (firstName && firstName.value.trim()) ||
-                    (secondName && secondName.value.trim()) ||
-                    (birthDate && birthDate.value.trim());
-
-                if (hasData) {
-                    // If any field is filled, all must be filled
-                    if (!firstName || !firstName.value.trim()) {
-                        alert(`Child ${i + 1}: First name is required`);
-                        firstName.focus();
-                        e.preventDefault();
-                        return false;
-                    }
-
-                    if (!secondName || !secondName.value.trim()) {
-                        alert(`Child ${i + 1}: Second name is required`);
-                        secondName.focus();
-                        e.preventDefault();
-                        return false;
-                    }
-
-                    if (!birthDate || !birthDate.value.trim()) {
-                        alert(`Child ${i + 1}: Birth date is required`);
-                        birthDate.focus();
-                        e.preventDefault();
-                        return false;
-                    }
-
-                    // Validate birth date is not in the future
-                    const today = new Date();
-                    const selectedDate = new Date(birthDate.value);
-
-                    if (selectedDate > today) {
-                        alert(`Child ${i + 1}: Birth date cannot be in the future`);
-                        birthDate.focus();
-                        e.preventDefault();
-                        return false;
-                    }
-
-                    // Validate birth date is not too old (reasonable limit)
-                    const minDate = new Date();
-                    minDate.setFullYear(minDate.getFullYear() - 100);
-
-                    if (selectedDate < minDate) {
-                        alert(`Child ${i + 1}: Birth date seems too old`);
-                        birthDate.focus();
-                        e.preventDefault();
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        });
-
-        document.addEventListener('DOMContentLoaded', function () {
-    function toggleDrivingLicenseSection() {
-        const yesRadio = document.querySelector('input[name="has_driving_license"][value="1"]');
-        const section = document.getElementById('driving-license-section');
-        if (yesRadio && yesRadio.checked) {
-            section && section.classList.add('show');
-        } else {
-            section && section.classList.remove('show');
-        }
-    }
-    const radios = document.querySelectorAll('input[name="has_driving_license"]');
-    radios.forEach(radio => radio.addEventListener('change', toggleDrivingLicenseSection));
-    toggleDrivingLicenseSection();
-});
     </script>
 </body>
 
