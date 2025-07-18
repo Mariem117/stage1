@@ -64,7 +64,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
     $date_of_birth = $_POST['date_of_birth'] ? $_POST['date_of_birth'] : null;
     $age = $date_of_birth ? calculateAge($date_of_birth) : null;
     $education = sanitize($_POST['education']);
-    $has_driving_license = isset($_POST['has_driving_license']) ? 1 : 0;
+    $has_driving_license = isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1' ? 1 : 0;
     $driving_licence_category = sanitize($_POST['driving_licence_category'] ?? '');
     $gender = sanitize($_POST['gender']);
     $factory = sanitize($_POST['factory']);
@@ -412,9 +412,17 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             </div>
             <div class="upload-row">
                 <div class="form-group">
-                    <label for="has_driving_license">Has Driving License</label>
-                    <input type="checkbox" id="has_driving_license" name="has_driving_license"
-                        onchange="toggleDrivingLicenseSection()" <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license']) ? 'checked' : ''; ?>>
+                    <label>Has Driving License</label>
+                    <label>
+                        <input type="radio" name="has_driving_license" value="1"
+                            onchange="toggleDrivingLicenseSection()" <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1') ? 'checked' : ''; ?>>
+                        Yes
+                    </label>
+                    <label>
+                        <input type="radio" name="has_driving_license" value="0"
+                            onchange="toggleDrivingLicenseSection()" <?php echo (!isset($_POST['has_driving_license']) || $_POST['has_driving_license'] == '0') ? 'checked' : ''; ?>>
+                        No
+                    </label>
                 </div>
             </div>
             <!-- Driving License Section -->
@@ -554,14 +562,18 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
         }
 
         function toggleDrivingLicenseSection() {
-            const checkbox = document.getElementById('has_driving_license');
+            const radios = document.getElementsByName('has_driving_license');
+            let hasLicense = false;
+            radios.forEach(radio => {
+                if (radio.checked && radio.value === '1') {
+                    hasLicense = true;
+                }
+            });
             const section = document.getElementById('driving-license-section');
-
-            if (checkbox.checked) {
+            if (hasLicense) {
                 section.classList.add('show');
             } else {
                 section.classList.remove('show');
-                // Clear driving license data when unchecked
                 document.getElementById('driving_licence_category').value = '';
                 document.getElementById('driving_licence_image').value = '';
                 document.getElementById('license_preview').style.display = 'none';

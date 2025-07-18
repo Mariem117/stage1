@@ -82,7 +82,7 @@ $employees = $stmt->fetchAll();
 function formatDate($date)
 {
     if (!$date)
-        return 'N/A';
+        return "None";
     return date('M j, Y', strtotime($date));
 }
 
@@ -90,7 +90,7 @@ function formatDate($date)
 function formatNCSS($first, $last)
 {
     if (!$first && !$last)
-        return 'N/A';
+        return null;
     return ($first ?: '') . '-' . ($last ?: '');
 }
 
@@ -98,7 +98,7 @@ function formatNCSS($first, $last)
 function formatSalary($salary)
 {
     if (!$salary)
-        return 'N/A';
+        return null;
     return '$' . number_format($salary, 2);
 }
 
@@ -106,7 +106,7 @@ function formatSalary($salary)
 function calculateAge($dateOfBirth)
 {
     if (!$dateOfBirth)
-        return 'N/A';
+        return null;
     $today = new DateTime();
     $birthDate = new DateTime($dateOfBirth);
     $age = $today->diff($birthDate)->y;
@@ -593,8 +593,13 @@ function calculateAge($dateOfBirth)
         <div class="navbar-container">
             <div class="navbar-brand">Employee Management System</div>
             <div class="navbar-nav">
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    <span class="admin-badge">ADMIN</span>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                    <a href="employees_listing.php" class="nav-link">Employees</a>
+                <?php else: ?>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
@@ -675,30 +680,38 @@ function calculateAge($dateOfBirth)
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-employee-id employee-id">
-                                        <?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['employee_id'] ?? null); ?>
+                                    </td>
                                     <td class="col-name employee-name">
                                         <?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>
                                     </td>
                                     <td class="col-gender extra-column">
-                                        <?php echo htmlspecialchars($employee['gender'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['gender'] ?? null); ?>
+                                    </td>
                                     <td class="col-dob extra-column"><?php echo formatDate($employee['date_of_birth']); ?></td>
                                     <td class="col-age extra-column"><?php echo calculateAge($employee['date_of_birth']); ?>
                                     </td>
-                                    <td class="col-department"><?php echo htmlspecialchars($employee['department'] ?? 'N/A'); ?>
+                                    <td class="col-department"><?php echo htmlspecialchars($employee['department'] ?? null); ?>
                                     </td>
                                     <td class="col-position extra-column">
-                                        <?php echo htmlspecialchars($employee['position'] ?? 'N/A'); ?></td>
-                                    <td class="col-phone"><?php echo htmlspecialchars($employee['phone'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['position'] ?? null); ?>
+                                    </td>
+                                    <td class="col-phone"><?php echo htmlspecialchars($employee['phone'] ?? null); ?></td>
                                     <td class="col-address extra-column">
-                                        <?php echo htmlspecialchars($employee['address'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['address'] ?? null); ?>
+                                    </td>
                                     <td class="col-education extra-column">
-                                        <?php echo htmlspecialchars($employee['education'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['education'] ?? null); ?>
+                                    </td>
                                     <td class="col-civil extra-column">
-                                        <?php echo htmlspecialchars($employee['civil_status'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['civil_status'] ?? null); ?>
+                                    </td>
                                     <td class="col-children extra-column">
-                                        <?php echo htmlspecialchars($employee['children'] ?? '0'); ?></td>
+                                        <?php echo htmlspecialchars($employee['children'] ?? '0'); ?>
+                                    </td>
                                     <td class="col-ncin extra-column">
-                                        <?php echo htmlspecialchars($employee['ncin'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['ncin'] ?? null); ?>
+                                    </td>
                                     <td class="col-cin-front extra-column">
                                         <?php if ($employee['cin_image_front']): ?>
                                             <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
@@ -716,11 +729,14 @@ function calculateAge($dateOfBirth)
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-cnss extra-column">
-                                        <?php echo formatNCSS($employee['cnss_first'], $employee['cnss_last']); ?></td>
+                                        <?php echo formatNCSS($employee['cnss_first'], $employee['cnss_last']); ?>
+                                    </td>
                                     <td class="col-license extra-column">
-                                        <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?></td>
+                                        <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?>
+                                    </td>
                                     <td class="col-license-cat extra-column">
-                                        <?php echo htmlspecialchars($employee['driving_licence_category'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['driving_licence_category'] ?? null); ?>
+                                    </td>
                                     <td class="col-license-img extra-column">
                                         <?php if ($employee['driving_licence_image']): ?>
                                             <img src="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>"
@@ -730,7 +746,8 @@ function calculateAge($dateOfBirth)
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-factory extra-column">
-                                        <?php echo htmlspecialchars($employee['factory'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['factory'] ?? null); ?>
+                                    </td>
                                     <td class="col-hire-date extra-column"><?php echo formatDate($employee['hire_date']); ?>
                                     </td>
                                     <td class="col-salary extra-column"><?php echo formatSalary($employee['salary']); ?></td>
@@ -740,7 +757,8 @@ function calculateAge($dateOfBirth)
                                         </span>
                                     </td>
                                     <td class="col-dismissal extra-column">
-                                        <?php echo htmlspecialchars($employee['dismissal_reason'] ?? 'N/A'); ?></td>
+                                        <?php echo htmlspecialchars($employee['dismissal_reason'] ?? null); ?>
+                                    </td>
                                     <td class="col-created extra-column"><?php echo formatDate($employee['created_at']); ?></td>
                                     <td class="col-updated extra-column"><?php echo formatDate($employee['updated_at']); ?></td>
                                     <td class="col-actions">

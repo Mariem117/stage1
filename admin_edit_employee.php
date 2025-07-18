@@ -51,7 +51,7 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
     $last_name = sanitize($_POST['last_name']);
     $email = sanitize($_POST['email']);
     $phone = sanitize($_POST['phone']);
-    $address = sanitize(substr($_POST['address'], 0, 32));
+    $address = sanitize($_POST['address']);
     $date_of_birth = $_POST['date_of_birth'] ? $_POST['date_of_birth'] : null;
     $civil_status = sanitize($_POST['civil_status']);
     $department = sanitize($_POST['department']);
@@ -61,23 +61,33 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
     $cnss_first = sanitize($_POST['cnss_first']);
     $cnss_last = sanitize($_POST['cnss_last']);
     $education = sanitize($_POST['education']);
-    $has_driving_license = isset($_POST['has_driving_license']) ? 1 : 0;
+    $has_driving_license = isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1' ? 1 : 0;
     $driving_licence_category = sanitize($_POST['driving_licence_category'] ?? '');
     $gender = sanitize($_POST['gender']);
-    $factory = sanitize(substr($_POST['factory'], 0, 1));
+    $factory = sanitize($_POST['factory']);
     $salary = floatval($_POST['salary']);
     $dismissal_reason = ($status === 'dismissed') ? sanitize($_POST['dismissal_reason']) : null;
     $children_data = isset($_POST['children']) ? $_POST['children'] : [];
 
     // Handle file uploads
-    $cin_image = $employee['cin_image'];
+    $cin_image_front = $employee['cin_image_front'];
+    $cin_image_back = $employee['cin_image_back'];
     $driving_licence_image = $employee['driving_licence_image'];
     $profile_picture = $employee['profile_picture'];
 
-    if (!empty($_FILES['cin_image']['name'])) {
-        $upload = handleFileUpload($_FILES['cin_image'], 'uploads/');
+    if (!empty($_FILES['cin_image_front']['name'])) {
+        $upload = handleFileUpload($_FILES['cin_image_front'], 'uploads/');
         if ($upload['success']) {
-            $cin_image = $upload['path'];
+            $cin_image_front = $upload['path'];
+        } else {
+            $error = $upload['error'];
+        }
+    }
+
+    if (!empty($_FILES['cin_image_back']['name'])) {
+        $upload = handleFileUpload($_FILES['cin_image_back'], 'uploads/');
+        if ($upload['success']) {
+            $cin_image_back = $upload['path'];
         } else {
             $error = $upload['error'];
         }
@@ -102,10 +112,6 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
     }
 
     // Validation
-    // In the POST handling section
-    $factory = sanitize($_POST['factory']);
-
-    // Validation
     if (empty($first_name) || empty($last_name) || empty($email) || empty($civil_status) || empty($gender)) {
         $error = 'Please fill in all required fields';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -122,8 +128,6 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
         $error = 'CNSS first part must be exactly 8 digits';
     } elseif (!empty($cnss_last) && (strlen($cnss_last) !== 2 || !ctype_digit($cnss_last))) {
         $error = 'CNSS last part must be exactly 2 digits';
-    } elseif (strlen($address) > 32) {
-        $error = 'Address must not exceed 32 characters';
     } elseif ($status === 'dismissed' && empty($dismissal_reason)) {
         $error = 'Dismissal reason is required when status is dismissed';
     }
@@ -159,7 +163,8 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                             civil_status = ?, department = ?, position = ?, status = ?, ncin = ?, 
                             cnss_first = ?, cnss_last = ?, education = ?, has_driving_license = ?, 
                             driving_licence_category = ?, gender = ?, factory = ?, salary = ?, 
-                            cin_image = ?, driving_licence_image = ?, profile_picture = ?, dismissal_reason = ?
+                            cin_image_front = ?, cin_image_back = ?, driving_licence_image = ?, 
+                            profile_picture = ?, dismissal_reason = ?, updated_at = NOW()
                         WHERE user_id = ?
                     ");
                     $stmt->execute([
@@ -181,7 +186,8 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                         $gender,
                         $factory,
                         $salary,
-                        $cin_image,
+                        $cin_image_front,
+                        $cin_image_back,
                         $driving_licence_image,
                         $profile_picture,
                         $dismissal_reason,
@@ -194,8 +200,8 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                     foreach ($children_data as $child) {
                         if (!empty($child['first_name']) && !empty($child['second_name']) && !empty($child['date_of_birth'])) {
                             $stmt = $pdo->prepare("
-                                INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth) 
-                                VALUES (?, ?, ?, ?)
+                                INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth, created_at, updated_at) 
+                                VALUES (?, ?, ?, ?, NOW(), NOW())
                             ");
                             $stmt->execute([$employee['id'], sanitize($child['first_name']), sanitize($child['second_name']), $child['date_of_birth']]);
                         }
@@ -260,6 +266,21 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                 document.querySelector('.children-section').classList.add('show');
             <?php endif; ?>
         };
+
+        document.addEventListener('DOMContentLoaded', function () {
+            function toggleDrivingLicenseSection() {
+                const yesRadio = document.querySelector('input[name="has_driving_license"][value="1"]');
+                const section = document.getElementById('driving-license-section');
+                if (yesRadio && yesRadio.checked) {
+                    section && section.classList.add('show');
+                } else {
+                    section && section.classList.remove('show');
+                }
+            }
+            const radios = document.querySelectorAll('input[name="has_driving_license"]');
+            radios.forEach(radio => radio.addEventListener('change', toggleDrivingLicenseSection));
+            toggleDrivingLicenseSection();
+        });
     </script>
 </head>
 
@@ -347,29 +368,38 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                                     value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
                             </div>
                             <div class="form-group">
-                                <label for="cin_image">CIN Image</label>
-                                <input type="file" id="cin_image" name="cin_image" accept="image/jpeg,image/png">
-                                <?php if ($employee['cin_image']): ?>
-                                    <p>Current: <a href="<?php echo htmlspecialchars($employee['cin_image']); ?>"
-                                            target="_blank">View CIN Image</a></p>
+                                <label for="cin_image_front">CIN Image Front</label>
+                                <input type="file" id="cin_image_front" name="cin_image_front"
+                                    accept="image/jpeg,image/png">
+                                <?php if ($employee['cin_image_front']): ?>
+                                    <p>Current: <a href="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
+                                            target="_blank">View CIN Front Image</a></p>
                                 <?php endif; ?>
                             </div>
                         </div>
 
                         <div class="form-row">
                             <div class="form-group">
+                                <label for="cin_image_back">CIN Image Back</label>
+                                <input type="file" id="cin_image_back" name="cin_image_back" accept="image/jpeg,image/png">
+                                <?php if ($employee['cin_image_back']): ?>
+                                    <p>Current: <a href="<?php echo htmlspecialchars($employee['cin_image_back']); ?>"
+                                            target="_blank">View CIN Back Image</a></p>
+                                <?php endif; ?>
+                            </div>
+                            <div class="form-group">
                                 <label for="cnss_first">CNSS (First 8 Digits)</label>
                                 <input type="text" id="cnss_first" name="cnss_first" maxlength="8" pattern="\d{8}"
                                     value="<?php echo htmlspecialchars($employee['cnss_first'] ?? ''); ?>">
                             </div>
+                        </div>
+
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="cnss_last">CNSS (Last 2 Digits)</label>
                                 <input type="text" id="cnss_last" name="cnss_last" maxlength="2" pattern="\d{2}"
                                     value="<?php echo htmlspecialchars($employee['cnss_last'] ?? ''); ?>">
                             </div>
-                        </div>
-
-                        <div class="form-row">
                             <div class="form-group">
                                 <label for="department">Department</label>
                                 <select id="department" name="department">
@@ -383,48 +413,66 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                                     <option value="Operations" <?php echo ($employee['department'] === 'Operations') ? 'selected' : ''; ?>>Operations</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="position">Position</label>
                                 <input type="text" id="position" name="position"
                                     value="<?php echo htmlspecialchars($employee['position'] ?? ''); ?>">
                             </div>
+                            <div class="form-group">
+                                <label for="factory">Factory <span class="required">*</span></label>
+                                <select id="factory" name="factory" required>
+                                    <option value="1" <?php echo ($employee['factory'] === '1') ? 'selected' : ''; ?>>Factory
+                                        1</option>
+                                    <option value="2" <?php echo ($employee['factory'] === '2') ? 'selected' : ''; ?>>Factory
+                                        2</option>
+                                    <option value="3" <?php echo ($employee['factory'] === '3') ? 'selected' : ''; ?>>Factory
+                                        3</option>
+                                    <option value="4" <?php echo ($employee['factory'] === '4') ? 'selected' : ''; ?>>Factory
+                                        4</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div class="form-row">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="factory">Factory <span class="required">*</span></label>
-                                    <select id="factory" name="factory" required>
-                                        <option value="1" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '1') ? 'selected' : ''; ?>>Factory 1</option>
-                                        <option value="2" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '2') ? 'selected' : ''; ?>>Factory 2</option>
-                                        <option value="3" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '3') ? 'selected' : ''; ?>>Factory 3</option>
-                                        <option value="4" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '4') ? 'selected' : ''; ?>>Factory 4</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="education">Education</label>
-                                    <input type="text" id="education" name="education"
-                                        value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
-                                </div>
+                            <div class="form-group">
+                                <label for="education">Education</label>
+                                <input type="text" id="education" name="education"
+                                    value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="salary">Salary</label>
+                                <input type="number" id="salary" name="salary" step="0.01"
+                                    value="<?php echo htmlspecialchars($employee['salary'] ?? ''); ?>">
                             </div>
                         </div>
 
                         <div class="form-group">
                             <label for="address">Address</label>
-                            <textarea id="address" name="address" maxlength="32"
+                            <textarea id="address" name="address"
                                 placeholder="Enter full address"><?php echo htmlspecialchars($employee['address'] ?? ''); ?></textarea>
                         </div>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="has_driving_license">Has Driving License</label>
-                                <input type="checkbox" id="has_driving_license" name="has_driving_license" <?php echo ($employee['has_driving_license']) ? 'checked' : ''; ?>>
-                            </div>
-                            <div class="form-group">
-                                <label for="driving_licence_category">Driving License Category</label>
-                                <input type="text" id="driving_licence_category" name="driving_licence_category"
-                                    value="<?php echo htmlspecialchars($employee['driving_licence_category'] ?? ''); ?>">
-                            </div>
+                        <div class="form-group">
+                            <label>Has Driving License</label>
+                            <label>
+                                <input type="radio" name="has_driving_license" value="1"
+                                    <?php echo (isset($employee['has_driving_license']) && $employee['has_driving_license'] == '1') ? 'checked' : ''; ?>>
+                                Yes
+                            </label>
+                            <label>
+                                <input type="radio" name="has_driving_license" value="0"
+                                    <?php echo (!isset($employee['has_driving_license']) || $employee['has_driving_license'] == '0') ? 'checked' : ''; ?>>
+                                No
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="driving_licence_category">Driving License Category</label>
+                            <input type="text" id="driving_licence_category" name="driving_licence_category"
+                                value="<?php echo htmlspecialchars($employee['driving_licence_category'] ?? ''); ?>">
                         </div>
 
                         <div class="form-group">
@@ -476,24 +524,18 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="salary">Salary</label>
-                                <input type="number" id="salary" name="salary" step="0.01"
-                                    value="<?php echo htmlspecialchars($employee['salary'] ?? ''); ?>">
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="dismissal_reason">Dismissal Reason</label>
-                            <textarea id="dismissal_reason"
-                                name="dismissal_reason"><?php echo htmlspecialchars($employee['dismissal_reason'] ?? ''); ?></textarea>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
                                 <label for="hire_date">Hire Date</label>
                                 <input type="text" id="hire_date"
                                     value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>"
                                     readonly>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="dismissal_reason">Dismissal Reason</label>
+                                <textarea id="dismissal_reason"
+                                    name="dismissal_reason"><?php echo htmlspecialchars($employee['dismissal_reason'] ?? 'None'); ?></textarea>
                             </div>
                             <div class="form-group">
                                 <label for="age">Age</label>

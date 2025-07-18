@@ -58,8 +58,7 @@ CREATE TABLE users
         (255), -- Added for storing driving license image path
     gender ENUM
         ('male', 'female') NOT NULL,
-    factory VARCHAR
-        (10),
+    factory INT,
     civil_status ENUM
         ('single', 'married', 'divorced', 'widowed') DEFAULT 'single',
     hire_date DATE,

@@ -85,6 +85,9 @@ body {
     padding: 40px;
     border-radius: 10px;
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
 }
 
 .form-row {

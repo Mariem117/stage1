@@ -80,10 +80,14 @@ foreach ($results as $dept => $count) {
         <div class="navbar-container">
             <div class="navbar-brand">Employee Management System</div>
             <div class="navbar-nav">
-                <span class="admin-badge">ADMIN</span>
-                <a href="admin_register.php" class="nav-link">Add New Admin</a>
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    <span class="admin-badge">ADMIN</span>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                    <a href="employees_listing.php" class="nav-link">Employees</a>
+                <?php else: ?>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                <?php endif; ?>
+                <a href="profile.php" class="nav-link">My Profile</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>
