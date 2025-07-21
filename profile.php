@@ -81,7 +81,8 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
     $cnss_last = sanitize($_POST['cnss_last']);
     $education = sanitize($_POST['education']);
     $has_driving_license = isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1' ? 1 : 0;
-    $driving_licence_category = sanitize($_POST['driving_licence_category'] ?? '');
+    $driving_license_number = sanitize($_POST['driving_license_number'] ?? '');
+    $driving_license_category = sanitize($_POST['driving_license_category'] ?? '');
     $gender = sanitize($_POST['gender']);
     $factory = sanitize($_POST['factory']);
     $children_data = isset($_POST['children']) ? $_POST['children'] : [];
@@ -98,7 +99,7 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
     // Handle file uploads
     $cin_image_front = $employee['cin_image_front'];
     $cin_image_back = $employee['cin_image_back'];
-    $driving_licence_image = $employee['driving_licence_image'];
+    $driving_license_image = $employee['driving_license_image'];
     $profile_picture = $employee['profile_picture'];
 
     if (!empty($_FILES['cin_image_front']['name'])) {
@@ -119,15 +120,17 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
         }
     }
 
-    if ($has_driving_license && !empty($_FILES['driving_licence_image']['name'])) {
-        $upload = handleFileUpload($_FILES['driving_licence_image'], 'uploads/');
+    if ($has_driving_license && !empty($_FILES['driving_license_image']['name'])) {
+        $upload = handleFileUpload($_FILES['driving_license_image'], 'uploads/');
         if ($upload['success']) {
-            $driving_licence_image = $upload['path'];
+            $driving_license_image = $upload['path'];
         } else {
             $error = $upload['error'];
         }
     }
-
+    if ($has_driving_license && empty($driving_license_number)) {
+        $error = 'Driving license number is required';
+    }
     if (!empty($_FILES['profile_picture']['name'])) {
         $upload = handleFileUpload($_FILES['profile_picture'], 'uploads/');
         if ($upload['success']) {
@@ -288,8 +291,8 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                                 UPDATE employee_profiles 
                                 SET first_name = ?, last_name = ?, employee_id = ?, ncin = ?, cin_image_front = ?, cin_image_back = ?, 
                                     cnss_first = ?, cnss_last = ?, department = ?, position = ?, phone = ?, address = ?, 
-                                    date_of_birth = ?, education = ?, has_driving_license = ?, driving_licence_category = ?, 
-                                    driving_licence_image = ?, gender = ?, factory = ?, civil_status = ?, hire_date = ?, 
+                                    date_of_birth = ?, education = ?, has_driving_license = ?, driving_license_category = ?, 
+                                    driving_license_number = ?,driving_license_image = ?, gender = ?, factory = ?, civil_status = ?, hire_date = ?, 
                                     salary = ?, profile_picture = ?, status = ?, dismissal_reason = ?, children = ?, updated_at = ?
                                 WHERE user_id = ?
                             ");
@@ -309,8 +312,9 @@ if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_to
                                 $date_of_birth,
                                 $education,
                                 $has_driving_license,
-                                $driving_licence_category,
-                                $driving_licence_image,
+                                $driving_license_category,
+                                $driving_license_number,
+                                $driving_license_image,
                                 $gender,
                                 $factory,
                                 $civil_status,
@@ -379,19 +383,132 @@ function isImage($filename) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile - Employee Management System</title>
     <link rel="stylesheet" href="profile.css">
+    <style>
+        .profile-form {
+            position: relative;
+        }
+        .logo {
+            height: 50px;
+            margin-right: 15px;
+        }
+        img {
+            overflow-clip-margin: content-box;
+            overflow: clip;
+        }
+        .profile-picture-corner {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid #fff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .profile-picture-corner:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .profile-picture-corner img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .profile-picture-corner .placeholder-icon {
+            font-size: 48px;
+            color: #ccc;
+        }
+
+        .profile-picture-input {
+            display: none;
+        }
+
+        .form-content {
+            padding-left: 140px;
+            padding-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .profile-picture-corner {
+                position: static;
+                margin: 0 auto 20px;
+                display: block;
+            }
+
+            .form-content {
+                padding-left: 0;
+                padding-top: 0;
+            }
+        }
+        .image-upload-box {
+            width: 100%;
+            height: 200px;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+            background-color: #fafafa;
+            margin-top: 8px;
+        }
+
+        .image-upload-box:hover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+
+        .uploaded-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .upload-placeholder {
+            text-align: center;
+            color: #666;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .image-upload-box:hover .upload-placeholder {
+            color: #007bff;
+        }
+    </style>
 </head>
 
 <body>
     <nav class="navbar">
         <div class="navbar-container">
-            <div class="navbar-brand">Employee Management System</div>
+            <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
                 <?php if ($_SESSION['role'] === 'admin'): ?>
                     <span class="admin-badge">ADMIN</span>
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                     <a href="employees_listing.php" class="nav-link">Employees</a>
                 <?php else: ?>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                    <a href="emp_request.php" class="nav-link">Request</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
                 <a href="logout.php" class="nav-link">Logout</a>
@@ -407,172 +524,116 @@ function isImage($filename) {
 
         <div class="profile-form">
             <?php if ($error): ?>
-                <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
+                <div class="alert alert-error" id="alert-message"><?php echo htmlspecialchars($error); ?></div>
             <?php endif; ?>
             <?php if ($success): ?>
-                <div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
+                <div class="alert alert-success" id="alert-message"><?php echo htmlspecialchars($success); ?></div>
             <?php endif; ?>
 
-            <div class="info-note">
-                <strong>Note:</strong> Fields marked with <span class="required">*</span> are required. Some information
-                like Employee ID, Username, Department, Position, Hire Date, Salary, Status, Dismissal Reason, Created
-                At, and Updated At can only be updated by administrators.
+
+            <!-- Profile Picture Corner -->
+            <div class="profile-picture-corner" onclick="document.getElementById('profile_picture').click()">
+                <?php if ($employee['profile_picture'] && isImage($employee['profile_picture'])): ?>
+                    <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>" alt="Profile Picture">
+                <?php else: ?>
+                    <div class="placeholder-icon">👤</div>
+                <?php endif; ?>
             </div>
 
             <form method="POST" action="" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                <input type="file" id="profile_picture" name="profile_picture" accept="image/jpeg,image/png" class="profile-picture-input">
 
-                <div class="form-row">
-                    <div class="form-group readonly">
-                        <label for="employee_id">Employee ID</label>
-                        <input type="text" id="employee_id"
-                            value="<?php echo htmlspecialchars($employee['employee_id'] ?? NULL); ?>" readonly>
-                    </div>
-                    <div class="form-group readonly">
-                        <label for="username">Username</label>
-                        <input type="text" id="username" value="<?php echo htmlspecialchars($employee['username']); ?>"
-                            readonly>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="first_name">First Name <span class="required">*</span></label>
-                        <input type="text" id="first_name" name="first_name"
-                            value="<?php echo htmlspecialchars($employee['first_name'] ?? ''); ?>" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="last_name">Last Name <span class="required">*</span></label>
-                        <input type="text" id="last_name" name="last_name"
-                            value="<?php echo htmlspecialchars($employee['last_name'] ?? ''); ?>" required>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="email">Email <span class="required">*</span></label>
-                    <input type="email" id="email" name="email"
-                        value="<?php echo htmlspecialchars($employee['email']); ?>" required>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="phone">Phone Number</label>
-                        <input type="tel" id="phone" name="phone"
-                            value="<?php echo htmlspecialchars($employee['phone'] ?? ''); ?>">
-                    </div>
-                    <div class="form-group">
-                        <label for="date_of_birth">Date of Birth</label>
-                        <input type="date" id="date_of_birth" name="date_of_birth"
-                            value="<?php echo htmlspecialchars($employee['date_of_birth'] ?? ''); ?>">
-                    </div>
-                </div>
-
-                <!-- Enhanced Profile Picture Section -->
-                <div class="form-section">
-                    <div class="section-header">
-                        <div class="section-icon">👤</div>
-                        <h3>Profile Picture</h3>
-                    </div>
-                    <div class="form-group">
-                        <label for="profile_picture">Profile Picture</label>
-                        <div class="file-upload-container">
-                            <div class="file-upload-wrapper">
-                                <?php if ($employee['profile_picture'] && isImage($employee['profile_picture'])): ?>
-                                    <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>" 
-                                         alt="Current Profile Picture" 
-                                         class="profile-picture-preview"
-                                         onclick="openImageModal(this.src)">
-                                <?php endif; ?>
-                                <div class="file-input-wrapper">
-                                    <input type="file" id="profile_picture" name="profile_picture" 
-                                           accept="image/jpeg,image/png" class="file-input">
-                                    <label for="profile_picture" class="file-input-label <?php echo $employee['profile_picture'] ? 'has-file' : ''; ?>">
-                                        <?php echo $employee['profile_picture'] ? 'Change Picture' : 'Choose Picture'; ?>
-                                    </label>
-                                </div>
-                            </div>
-                            <?php if ($employee['profile_picture']): ?>
-                                <div class="current-file-info">
-                                    <div class="file-icon">📷</div>
-                                    <a href="<?php echo htmlspecialchars($employee['profile_picture']); ?>" 
-                                       target="_blank">View Current Picture</a>
-                                </div>
-                            <?php endif; ?>
+                <div class="form-content">
+                    <div class="form-row">
+                        <div class="form-group readonly">
+                            <label for="employee_id">Employee ID</label>
+                            <input type="text" id="employee_id"
+                                value="<?php echo htmlspecialchars($employee['employee_id'] ?? NULL); ?>" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" value="<?php echo htmlspecialchars($employee['username']); ?>"
+                                >
                         </div>
                     </div>
-                </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="ncin">NCIN</label>
-                        <input type="text" id="ncin" name="ncin"
-                            value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
-                    </div>
-                </div>
-
-                <!-- Enhanced CIN Images Section -->
-                <div class="form-section">
-                    <div class="section-header">
-                        <div class="section-icon">🆔</div>
-                        <h3>CIN Images</h3>
-                    </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="cin_image_front">CIN Image (Front)</label>
-                            <div class="file-upload-container">
-                                <div class="file-upload-wrapper">
-                                    <?php if ($employee['cin_image_front'] && isImage($employee['cin_image_front'])): ?>
-                                        <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>" 
-                                             alt="CIN Front" 
-                                             class="image-preview"
-                                             onclick="openImageModal(this.src)">
-                                    <?php endif; ?>
-                                    <div class="file-input-wrapper">
-                                        <input type="file" id="cin_image_front" name="cin_image_front" 
-                                               accept="image/jpeg,image/png" class="file-input">
-                                        <label for="cin_image_front" class="file-input-label <?php echo $employee['cin_image_front'] ? 'has-file' : ''; ?>">
-                                            <?php echo $employee['cin_image_front'] ? 'Change Image' : 'Choose Image'; ?>
-                                        </label>
-                                    </div>
-                                </div>
-                                <?php if ($employee['cin_image_front']): ?>
-                                    <div class="current-file-info">
-                                        <div class="file-icon">📄</div>
-                                        <a href="<?php echo htmlspecialchars($employee['cin_image_front']); ?>" 
-                                           target="_blank">View CIN Front</a>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
+                            <label for="first_name">First Name <span class="required">*</span></label>
+                            <input type="text" id="first_name" name="first_name"
+                                value="<?php echo htmlspecialchars($employee['first_name'] ?? ''); ?>" required>
                         </div>
                         <div class="form-group">
-                            <label for="cin_image_back">CIN Image (Back)</label>
-                            <div class="file-upload-container">
-                                <div class="file-upload-wrapper">
-                                    <?php if ($employee['cin_image_back'] && isImage($employee['cin_image_back'])): ?>
-                                        <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>" 
-                                             alt="CIN Back" 
-                                             class="image-preview"
-                                             onclick="openImageModal(this.src)">
-                                    <?php endif; ?>
-                                    <div class="file-input-wrapper">
-                                        <input type="file" id="cin_image_back" name="cin_image_back" 
-                                               accept="image/jpeg,image/png" class="file-input">
-                                        <label for="cin_image_back" class="file-input-label <?php echo $employee['cin_image_back'] ? 'has-file' : ''; ?>">
-                                            <?php echo $employee['cin_image_back'] ? 'Change Image' : 'Choose Image'; ?>
-                                        </label>
-                                    </div>
-                                </div>
-                                <?php if ($employee['cin_image_back']): ?>
-                                    <div class="current-file-info">
-                                        <div class="file-icon">📄</div>
-                                        <a href="<?php echo htmlspecialchars($employee['cin_image_back']); ?>" 
-                                           target="_blank">View CIN Back</a>
+                            <label for="last_name">Last Name <span class="required">*</span></label>
+                            <input type="text" id="last_name" name="last_name"
+                                value="<?php echo htmlspecialchars($employee['last_name'] ?? ''); ?>" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email <span class="required">*</span></label>
+                        <input type="email" id="email" name="email"
+                            value="<?php echo htmlspecialchars($employee['email']); ?>" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="phone">Phone Number</label>
+                            <input type="tel" id="phone" name="phone"
+                                value="<?php echo htmlspecialchars($employee['phone'] ?? ''); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="date_of_birth">Date of Birth</label>
+                            <input type="date" id="date_of_birth" name="date_of_birth"
+                                value="<?php echo htmlspecialchars($employee['date_of_birth'] ?? ''); ?>">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ncin">NCIN</label>
+                            <input type="text" id="ncin" name="ncin"
+                                value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
+                        </div>
+                    </div>
+
+                   
+                    <div class="form-section">
+                    <h3>CIN Images</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>CIN Image (Front)</label>
+                            <div class="image-upload-box" onclick="document.getElementById('cin_image_front').click()">
+                                <?php if ($employee['cin_image_front'] && isImage($employee['cin_image_front'])): ?>
+                                    <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>" alt="CIN Front" class="uploaded-image">
+                                <?php else: ?>
+                                    <div class="upload-placeholder">
+                                        <div class="upload-icon">📷</div>
+                                        <div class="upload-text">Click to upload CIN Front</div>
                                     </div>
                                 <?php endif; ?>
                             </div>
+                            <input type="file" id="cin_image_front" name="cin_image_front" accept="image/jpeg,image/png" style="display: none;">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>CIN Image (Back)</label>
+                            <div class="image-upload-box" onclick="document.getElementById('cin_image_back').click()">
+                                <?php if ($employee['cin_image_back'] && isImage($employee['cin_image_back'])): ?>
+                                    <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>" alt="CIN Back" class="uploaded-image">
+                                <?php else: ?>
+                                    <div class="upload-placeholder">
+                                        <div class="upload-icon">📷</div>
+                                        <div class="upload-text">Click to upload CIN Back</div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <input type="file" id="cin_image_back" name="cin_image_back" accept="image/jpeg,image/png" style="display: none;">
                         </div>
                     </div>
                 </div>
+
 
                 <div class="form-row">
                     <div class="form-group">
@@ -608,48 +669,40 @@ function isImage($filename) {
                         </label>
                     </div>
                 </div>
-
-                <div class="form-group" id="driving-license-section">
-                    <label for="driving_licence_category">Driving License Category</label>
-                    <input type="text" id="driving_licence_category" name="driving_licence_category"
-                        value="<?php echo htmlspecialchars($employee['driving_licence_category'] ?? ''); ?>">
-                </div>
-
-                <!-- Enhanced Driving License Image Section -->
-                <div class="form-section" id="driving-license-image-section">
-                    <div class="section-header">
-                        <div class="section-icon">🚗</div>
-                        <h3>Driving License</h3>
+                <?php if (isset($employee['has_driving_license']) && $employee['has_driving_license'] == '1'): ?>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            document.getElementById('driving-license-section').style.display = 'block';
+                        });
+                    </script>
+                    <div class="form-group" id="driving-license-section">
+                        <label for="driving_license_category">Driving License Category</label>
+                        <input type="text" id="driving_license_category" name="driving_license_category"
+                            value="<?php echo htmlspecialchars($employee['driving_license_category'] ?? ''); ?>">
+                        <label for="driving_license_number">Driving License Number</label>
+                        <input type="text" id="driving_license_number" name="driving_license_number"
+                            value="<?php echo htmlspecialchars($employee['driving_license_number'] ?? ''); ?>">
                     </div>
-                    <div class="form-group">
-                        <label for="driving_licence_image">Driving License Image</label>
-                        <div class="file-upload-container">
-                            <div class="file-upload-wrapper">
-                                <?php if ($employee['driving_licence_image'] && isImage($employee['driving_licence_image'])): ?>
-                                    <img src="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>" 
-                                         alt="Driving License" 
-                                         class="image-preview"
-                                         onclick="openImageModal(this.src)">
+
+                    <!-- Enhanced Driving License Image Section -->
+                    <div class="form-section" id="driving-license-image-section">
+                        <h3>Driving License</h3>
+                        <div class="form-group">
+                            <label>Driving License Image</label>
+                            <div class="image-upload-box" onclick="document.getElementById('driving_license_image').click()">
+                                <?php if ($employee['driving_license_image'] && isImage($employee['driving_license_image'])): ?>
+                                    <img src="<?php echo htmlspecialchars($employee['driving_license_image']); ?>" alt="Driving License" class="uploaded-image">
+                                <?php else: ?>
+                                    <div class="upload-placeholder">
+                                        <div class="upload-icon">🚗</div>
+                                        <div class="upload-text">Click to upload Driving License</div>
+                                    </div>
                                 <?php endif; ?>
-                                <div class="file-input-wrapper">
-                                    <input type="file" id="driving_licence_image" name="driving_licence_image" 
-                                           accept="image/jpeg,image/png" class="file-input">
-                                    <label for="driving_licence_image" class="file-input-label <?php echo $employee['driving_licence_image'] ? 'has-file' : ''; ?>">
-                                        <?php echo $employee['driving_licence_image'] ? 'Change License' : 'Choose License'; ?>
-                                    </label>
-                                </div>
                             </div>
-                            <?php if ($employee['driving_licence_image']): ?>
-                                <div class="current-file-info">
-                                    <div class="file-icon">🚗</div>
-                                    <a href="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>" 
-                                       target="_blank">View Current License</a>
-                                </div>
-                            <?php endif; ?>
+                            <input type="file" id="driving_license_image" name="driving_license_image" accept="image/jpeg,image/png" style="display: none;">
                         </div>
                     </div>
-                </div>
-
+                <?php endif; ?>                   
                 <div class="form-group">
                     <label for="gender">Gender <span class="required">*</span></label>
                         <select id="gender" name="gender" required>
@@ -676,24 +729,24 @@ function isImage($filename) {
                     </div>
 
                     <div class="form-row">
-                        <div class="form-group readonly">
+                        <div class="form-group">
                             <label for="department">Department</label>
                             <input type="text" id="department"
                                 value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>"
-                                readonly>
+                            >
                         </div>
-                        <div class="form-group readonly">
+                        <div class="form-group">
                             <label for="position">Position</label>
                             <input type="text" id="position"
                                 value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>"
-                                readonly>
+                            >
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="address">Address</label>
-                        <textarea id="address" name="address" maxlength="32"
-                            placeholder="Enter your full address"><?php echo htmlspecialchars($employee['address'] ?? ''); ?></textarea>
+                        <input type="text" id="address" name="address" maxlength="32"
+                            placeholder="Enter your full address" value="<?php echo htmlspecialchars($employee['address'] ?? ''); ?>">
                     </div>
 
                     <div class="form-row">
@@ -703,40 +756,7 @@ function isImage($filename) {
                                 value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>"
                                 readonly>
                         </div>
-                        <div class="form-group readonly">
-                            <label for="status">Status</label>
-                            <input type="text" id="status"
-                                value="<?php echo ucfirst($employee['status'] ?? 'active'); ?>" readonly>
-                        </div>
                     </div>
-
-                    <div class="form-group readonly">
-                        <label for="salary">Salary</label>
-                        <input type="text" id="salary"
-                            value="<?php echo htmlspecialchars($employee['salary'] ?? 'Not specified'); ?>" readonly>
-                    </div>
-
-                    <div class="form-group readonly">
-                        <label for="dismissal_reason">Dismissal Reason</label>
-                        <textarea id="dismissal_reason"
-                            readonly><?php echo htmlspecialchars($employee['dismissal_reason'] ?? 'N/A'); ?></textarea>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group readonly">
-                            <label for="created_at">Created At</label>
-                            <input type="text" id="created_at"
-                                value="<?php echo $employee['created_at'] ? date('F j, Y H:i:s', strtotime($employee['created_at'])) : 'Not specified'; ?>"
-                                readonly>
-                        </div>
-                        <div class="form-group readonly">
-                            <label for="updated_at">Updated At</label>
-                            <input type="text" id="updated_at"
-                                value="<?php echo $employee['updated_at'] ? date('F j, Y H:i:s', strtotime($employee['updated_at'])) : 'Not specified'; ?>"
-                                readonly>
-                        </div>
-                    </div>
-
                     <div class="form-group">
                         <label for="civil_status">Civil Status <span class="required">*</span></label>
                         <select id="civil_status" name="civil_status" required>
@@ -852,6 +872,14 @@ function isImage($filename) {
                 });
             });
         }
+        document.addEventListener('DOMContentLoaded', function () {
+        const alert = document.getElementById('alert-message');
+        if (alert) {
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
+    });
     </script>
 </body>
 

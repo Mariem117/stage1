@@ -73,12 +73,23 @@ foreach ($results as $dept => $count) {
     <title>Admin Dashboard - Employee Management System</title>
     <link rel="stylesheet" href="dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .logo {
+            height: 50px;
+            margin-right: 15px;
+        }
+
+        img {
+            overflow-clip-margin: content-box;
+            overflow: clip;
+        }
+    </style>
 </head>
 
 <body>
     <nav class="navbar">
         <div class="navbar-container">
-            <div class="navbar-brand">Employee Management System</div>
+            <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
                 <?php if ($_SESSION['role'] === 'admin'): ?>
                     <span class="admin-badge">ADMIN</span>
@@ -88,7 +99,7 @@ foreach ($results as $dept => $count) {
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="" class="nav-link">Notifications</a>
+                <a href="admin_request.php" class="nav-link">Notifications</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

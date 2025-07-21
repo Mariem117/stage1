@@ -13,48 +13,51 @@ body {
 
 .navbar {
     background: white;
-    color: #333;
-    padding: 1rem 0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    padding-top: 15px;
+    padding-bottom: 15px;
+    padding-left: 0;
+    padding-right: 0;
+    border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
 }
 
 .navbar-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
-
-.navbar-brand {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #333;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .navbar-nav {
     display: flex;
-    gap: 20px;
     align-items: center;
+    gap: 1.5rem;
 }
 
 .nav-link {
     color: #333;
     text-decoration: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    transition: all 0.3s;
+    font-size: 1rem;
+    transition: color 0.3s, transform 0.2s;
 }
 
-.nav-link:hover {
+.nav-link:hover,
+.nav-link:focus {
     color: #a70202;
     transform: translateY(-2px);
+    outline: none;
 }
 
+.logo {
+    height: 50px;
+    margin-right: 15px;
+}
+img {
+    overflow-clip-margin: content-box;
+    overflow: clip;
+}
 .admin-badge {
     background: #a70202;
     color: white;

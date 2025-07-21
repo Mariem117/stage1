@@ -52,9 +52,9 @@ CREATE TABLE users
     education VARCHAR
         (100),
     has_driving_license BOOLEAN DEFAULT FALSE,
-    driving_licence_category VARCHAR
+    driving_license_category VARCHAR
         (50), -- Added for driving license category
-    driving_licence_image VARCHAR
+    driving_license_image VARCHAR
         (255), -- Added for storing driving license image path
     gender ENUM
         ('male', 'female') NOT NULL,
@@ -97,3 +97,195 @@ CREATE TABLE users
             (id) ON
             DELETE CASCADE
 );
+            -- Add new tables for enhanced request management
+
+            -- 1. Request Comments/Conversation History
+            CREATE TABLE request_comments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    request_id INT NOT NULL,
+    user_id INT NOT NULL,
+    comment TEXT NOT NULL,
+    is_internal BOOLEAN DEFAULT FALSE COMMENT 'Internal admin notes not visible to employees',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+            UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (request_id) REFERENCES employee_requests
+            (id) ON
+            DELETE CASCADE,
+    FOREIGN KEY (user_id)
+            REFERENCES users
+            (id) ON
+            DELETE CASCADE,
+    INDEX idx_request_comments_request_id (request_id),
+    INDEX idx_request_comments_created_at
+            (created_at)
+);
+
+            -- 2. Request Attachments
+            CREATE TABLE request_attachments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    request_id INT NOT NULL,
+    user_id INT NOT NULL COMMENT 'Who uploaded the file',
+    filename VARCHAR
+            (255) NOT NULL COMMENT 'Stored filename',
+    original_filename VARCHAR
+            (255) NOT NULL COMMENT 'Original filename',
+    file_size INT NOT NULL,
+    mime_type VARCHAR
+            (100) NOT NULL,
+    file_path VARCHAR
+            (500) NOT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (request_id) REFERENCES employee_requests
+            (id) ON
+            DELETE CASCADE,
+    FOREIGN KEY (user_id)
+            REFERENCES users
+            (id) ON
+            DELETE CASCADE,
+    INDEX idx_request_attachments_request_id (request_id)
+            );
+
+            -- 3. Request Status History/Timeline
+            CREATE TABLE request_status_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    request_id INT NOT NULL,
+    old_status ENUM
+            ('pending', 'in_progress', 'completed', 'rejected') NULL,
+    new_status ENUM
+            ('pending', 'in_progress', 'completed', 'rejected') NOT NULL,
+    changed_by INT NOT NULL,
+    notes TEXT NULL COMMENT 'Optional notes about the status change',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (request_id) REFERENCES employee_requests
+            (id) ON
+            DELETE CASCADE,
+    FOREIGN KEY (changed_by)
+            REFERENCES users
+            (id) ON
+            DELETE CASCADE,
+    INDEX idx_status_history_request_id (request_id),
+    INDEX idx_status_history_created_at
+            (created_at)
+);
+
+            -- 4. Request Assignment History
+            CREATE TABLE request_assignments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    request_id INT NOT NULL,
+    assigned_from INT NULL COMMENT 'Previous assignee (NULL for initial assignment)',
+    assigned_to INT NULL COMMENT 'New assignee (NULL for unassignment)',
+    assigned_by INT NOT NULL COMMENT 'Who made the assignment',
+    notes TEXT NULL COMMENT 'Assignment notes',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (request_id) REFERENCES employee_requests
+            (id) ON
+            DELETE CASCADE,
+    FOREIGN KEY (assigned_from)
+            REFERENCES users
+            (id) ON
+            DELETE
+            SET NULL
+            ,
+    FOREIGN KEY
+            (assigned_to) REFERENCES users
+            (id) ON
+            DELETE
+            SET NULL
+            ,
+    FOREIGN KEY
+            (assigned_by) REFERENCES users
+            (id) ON
+            DELETE CASCADE,
+    INDEX idx_assignments_request_id (request_id),
+    INDEX idx_assignments_assigned_to
+            (assigned_to),
+    INDEX idx_assignments_created_at
+            (created_at)
+);
+
+            -- 5. Update employee_requests table to support assignments
+            ALTER TABLE employee_requests 
+ADD COLUMN assigned_to INT NULL AFTER admin_id,
+            ADD COLUMN request_number VARCHAR
+            (20) UNIQUE NULL AFTER id,
+            ADD COLUMN category VARCHAR
+            (50) DEFAULT 'general' AFTER priority,
+            ADD FOREIGN KEY
+            (assigned_to) REFERENCES users
+            (id) ON
+            DELETE
+            SET NULL;
+
+            -- Add index for request number
+            ALTER TABLE employee_requests ADD INDEX idx_request_number (request_number);
+
+            -- 6. Create triggers to automatically log status changes and assignments
+
+            DELIMITER //
+
+            -- Trigger for status history
+            CREATE TRIGGER tr_request_status_history 
+AFTER
+            UPDATE ON employee_requests
+FOR EACH ROW
+            BEGIN
+                IF OLD.status != NEW.status THEN
+                INSERT INTO request_status_history
+                    (request_id, old_status, new_status, changed_by, notes)
+                VALUES
+                    (NEW.id, OLD.status, NEW.status, NEW.admin_id, 'Status updated');
+            END
+            IF;
+END//
+
+            -- Trigger for assignment history
+            CREATE TRIGGER tr_request_assignment_history
+AFTER
+            UPDATE ON employee_requests
+FOR EACH ROW
+            BEGIN
+                IF (OLD.assigned_to IS NULL AND NEW.assigned_to IS NOT NULL) OR
+                    (OLD.assigned_to IS NOT NULL AND NEW.assigned_to IS NULL) OR
+                    (OLD.assigned_to != NEW.assigned_to) THEN
+                INSERT INTO request_assignments
+                    (request_id, assigned_from, assigned_to, assigned_by, notes)
+                VALUES
+                    (NEW.id, OLD.assigned_to, NEW.assigned_to, NEW.admin_id, 'Assignment updated');
+            END
+            IF;
+END//
+
+            -- Trigger to generate request numbers
+            CREATE TRIGGER tr_request_number
+BEFORE
+            INSERT ON
+            employee_requests
+            FOR
+            EACH
+            ROW
+            BEGIN
+                IF NEW.request_number IS NULL THEN
+                SET NEW
+                .request_number = CONCAT
+                ('REQ-', YEAR
+                (NOW
+                ()), '-', LPAD
+                (LAST_INSERT_ID
+                () + 1, 6, '0'));
+            END
+            IF;
+END//
+
+DELIMITER ;
+
+            -- Insert initial status history for existing requests (optional)
+            INSERT INTO request_status_history
+                (request_id, old_status, new_status, changed_by, notes, created_at)
+            SELECT id, NULL, status, admin_id, 'Initial status', created_at
+            FROM employee_requests
+            WHERE admin_id IS NOT NULL;

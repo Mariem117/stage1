@@ -62,7 +62,7 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
     $cnss_last = sanitize($_POST['cnss_last']);
     $education = sanitize($_POST['education']);
     $has_driving_license = isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1' ? 1 : 0;
-    $driving_licence_category = sanitize($_POST['driving_licence_category'] ?? '');
+    $driving_license_category = sanitize($_POST['driving_license_category'] ?? '');
     $gender = sanitize($_POST['gender']);
     $factory = sanitize($_POST['factory']);
     $salary = floatval($_POST['salary']);
@@ -72,7 +72,7 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
     // Handle file uploads
     $cin_image_front = $employee['cin_image_front'];
     $cin_image_back = $employee['cin_image_back'];
-    $driving_licence_image = $employee['driving_licence_image'];
+    $driving_license_image = $employee['driving_license_image'];
     $profile_picture = $employee['profile_picture'];
 
     if (!empty($_FILES['cin_image_front']['name'])) {
@@ -93,10 +93,10 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
         }
     }
 
-    if ($has_driving_license && !empty($_FILES['driving_licence_image']['name'])) {
-        $upload = handleFileUpload($_FILES['driving_licence_image'], 'uploads/');
+    if ($has_driving_license && !empty($_FILES['driving_license_image']['name'])) {
+        $upload = handleFileUpload($_FILES['driving_license_image'], 'uploads/');
         if ($upload['success']) {
-            $driving_licence_image = $upload['path'];
+            $driving_license_image = $upload['path'];
         } else {
             $error = $upload['error'];
         }
@@ -162,8 +162,8 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                         SET first_name = ?, last_name = ?, phone = ?, address = ?, date_of_birth = ?,
                             civil_status = ?, department = ?, position = ?, status = ?, ncin = ?, 
                             cnss_first = ?, cnss_last = ?, education = ?, has_driving_license = ?, 
-                            driving_licence_category = ?, gender = ?, factory = ?, salary = ?, 
-                            cin_image_front = ?, cin_image_back = ?, driving_licence_image = ?, 
+                            driving_license_category = ?, gender = ?, factory = ?, salary = ?, 
+                            cin_image_front = ?, cin_image_back = ?, driving_license_image = ?, 
                             profile_picture = ?, dismissal_reason = ?, updated_at = NOW()
                         WHERE user_id = ?
                     ");
@@ -182,13 +182,13 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                         $cnss_last,
                         $education,
                         $has_driving_license,
-                        $driving_licence_category,
+                        $driving_license_category,
                         $gender,
                         $factory,
                         $salary,
                         $cin_image_front,
                         $cin_image_back,
-                        $driving_licence_image,
+                        $driving_license_image,
                         $profile_picture,
                         $dismissal_reason,
                         $user_id
@@ -241,6 +241,17 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit Employee - Employee Management System</title>
     <link rel="stylesheet" href="emp_register.css">
+    <style>
+        .logo {
+            height: 50px;
+            margin-right: 15px;
+        }
+
+        img {
+            overflow-clip-margin: content-box;
+            overflow: clip;
+        }
+    </style>
     <script>
         function addChildRow(first_name = '', second_name = '', dob = '') {
             const container = document.querySelector('.children-container');
@@ -287,11 +298,18 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
 <body>
     <nav class="navbar">
         <div class="navbar-container">
+            <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-brand">Employee Management System</div>
             <div class="navbar-nav">
-                <span class="admin-badge">ADMIN</span>
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    <span class="admin-badge">ADMIN</span>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                    <a href="employees_listing.php" class="nav-link">Employees</a>
+                <?php else: ?>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                <?php endif; ?>
+                <a href="profile.php" class="nav-link">My Profile</a>
+                <a href="admin_request.php" class="nav-link">Notifications</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>
@@ -470,17 +488,17 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
                         </div>
 
                         <div class="form-group">
-                            <label for="driving_licence_category">Driving License Category</label>
-                            <input type="text" id="driving_licence_category" name="driving_licence_category"
-                                value="<?php echo htmlspecialchars($employee['driving_licence_category'] ?? ''); ?>">
+                            <label for="driving_license_category">Driving License Category</label>
+                            <input type="text" id="driving_license_category" name="driving_license_category"
+                                value="<?php echo htmlspecialchars($employee['driving_license_category'] ?? ''); ?>">
                         </div>
 
                         <div class="form-group">
-                            <label for="driving_licence_image">Driving License Image</label>
-                            <input type="file" id="driving_licence_image" name="driving_licence_image"
+                            <label for="driving_license_image">Driving License Image</label>
+                            <input type="file" id="driving_license_image" name="driving_license_image"
                                 accept="image/jpeg,image/png">
-                            <?php if ($employee['driving_licence_image']): ?>
-                                <p>Current: <a href="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>"
+                            <?php if ($employee['driving_license_image']): ?>
+                                <p>Current: <a href="<?php echo htmlspecialchars($employee['driving_license_image']); ?>"
                                         target="_blank">View Driving License Image</a></p>
                             <?php endif; ?>
                         </div>

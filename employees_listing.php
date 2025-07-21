@@ -66,7 +66,7 @@ $stmt = $pdo->prepare("
            ep.ncin, ep.cin_image_front, ep.cin_image_back, ep.cnss_first, ep.cnss_last,
            ep.department, ep.position, ep.phone, ep.address,
            ep.date_of_birth, ep.education, ep.has_driving_license,
-           ep.driving_licence_category, ep.driving_licence_image,
+           ep.driving_license_category, ep.driving_license_number , ep.driving_license_image,
            ep.gender, ep.factory, ep.civil_status, ep.children, ep.hire_date, 
            ep.salary, ep.profile_picture, ep.status, ep.dismissal_reason,
            ep.created_at, ep.updated_at
@@ -136,9 +136,22 @@ function calculateAge($dateOfBirth)
             color: #333;
         }
 
+        .logo {
+            height: 50px;
+            margin-right: 15px;
+        }
+
+        img {
+            overflow-clip-margin: content-box;
+            overflow: clip;
+        }
+
         .navbar {
             background: white;
-            padding: 15px;
+            padding-top: 15px;
+            padding-bottom: 15px;
+            padding-left: 0;
+            padding-right: 0;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
             margin-bottom: 20px;
@@ -150,12 +163,6 @@ function calculateAge($dateOfBirth)
             align-items: center;
             max-width: 1200px;
             margin: 0 auto;
-        }
-
-        .navbar-brand {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #333;
         }
 
         .navbar-nav {
@@ -591,7 +598,7 @@ function calculateAge($dateOfBirth)
 <body>
     <nav class="navbar">
         <div class="navbar-container">
-            <div class="navbar-brand">Employee Management System</div>
+            <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
                 <?php if ($_SESSION['role'] === 'admin'): ?>
                     <span class="admin-badge">ADMIN</span>
@@ -657,6 +664,7 @@ function calculateAge($dateOfBirth)
                                 <th class="col-cnss extra-column">CNSS</th>
                                 <th class="col-license extra-column">Has License</th>
                                 <th class="col-license-cat extra-column">License Category</th>
+                                <th class="col-license-nb extra-column">License number</th>
                                 <th class="col-license-img extra-column">License Image</th>
                                 <th class="col-factory extra-column">Factory</th>
                                 <th class="col-hire-date extra-column">Hire Date</th>
@@ -676,7 +684,7 @@ function calculateAge($dateOfBirth)
                                             <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>"
                                                 class="profile-pic" alt="Profile Picture">
                                         <?php else: ?>
-                                            N/A
+                                            None
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-employee-id employee-id">
@@ -717,7 +725,7 @@ function calculateAge($dateOfBirth)
                                             <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
                                                 class="cin-image" alt="CIN Front">
                                         <?php else: ?>
-                                            N/A
+                                            None
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-cin-back extra-column">
@@ -725,7 +733,7 @@ function calculateAge($dateOfBirth)
                                             <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>"
                                                 class="cin-image" alt="CIN Back">
                                         <?php else: ?>
-                                            N/A
+                                            None
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-cnss extra-column">
@@ -735,14 +743,17 @@ function calculateAge($dateOfBirth)
                                         <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?>
                                     </td>
                                     <td class="col-license-cat extra-column">
-                                        <?php echo htmlspecialchars($employee['driving_licence_category'] ?? null); ?>
+                                        <?php echo htmlspecialchars($employee['driving_license_category'] ?? null); ?>
+                                    </td>
+                                    <td class="col-license-nb extra-column">
+                                        <?php echo htmlspecialchars($employee['driving_license_number'] ?? null); ?>
                                     </td>
                                     <td class="col-license-img extra-column">
-                                        <?php if ($employee['driving_licence_image']): ?>
-                                            <img src="<?php echo htmlspecialchars($employee['driving_licence_image']); ?>"
+                                        <?php if ($employee['driving_license_image']): ?>
+                                            <img src="<?php echo htmlspecialchars($employee['driving_license_image']); ?>"
                                                 class="license-image" alt="License">
                                         <?php else: ?>
-                                            N/A
+                                            None
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-factory extra-column">

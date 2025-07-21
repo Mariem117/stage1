@@ -45,8 +45,38 @@ function validateChildren($children)
     }
     return $errors;
 }
+function validateUploadedFile($file)
+{
+    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    $maxSize = 5 * 1024 * 1024; // 5MB
 
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return ['success' => false, 'error' => 'File upload error occurred'];
+    }
+
+    if ($file['size'] > $maxSize) {
+        return ['success' => false, 'error' => 'File size must be less than 5MB'];
+    }
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    if (!in_array($mimeType, $allowedTypes)) {
+        return ['success' => false, 'error' => 'Only JPG, JPEG, PNG, and GIF files are allowed'];
+    }
+
+    return ['success' => true];
+}
+
+function generateUniqueFileName($originalName)
+{
+    $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+    $filename = uniqid() . '_' . time() . '.' . $extension;
+    return $filename;
+}
 if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])) {
+    // Sanitize and assign ALL variables FIRST
     $username = sanitize($_POST['username']);
     $email = sanitize($_POST['email']);
     $password = $_POST['password'];
@@ -64,55 +94,57 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
     $age = $date_of_birth ? calculateAge($date_of_birth) : null;
     $education = sanitize($_POST['education']);
     $has_driving_license = isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1' ? 1 : 0;
-    $driving_licence_category = sanitize($_POST['driving_licence_category'] ?? '');
+    $driving_license_category = sanitize($_POST['driving_license_category'] ?? '');
+    $driving_license_number = sanitize($_POST['driving_license_number'] ?? '');
     $gender = sanitize($_POST['gender']);
     $factory = sanitize($_POST['factory']);
     $civil_status = sanitize($_POST['civil_status']);
-    $salary = floatval($_POST['salary']);
 
-    // Handle file uploads
-    $cin_image_front = null;
-    $cin_image_back = null;
-    $driving_licence_image = null;
-    $profile_picture = null;
+    // Store temporary file paths instead of moving files immediately
+    $temp_files = [];
+    $final_paths = [];
 
-    // CIN Front Image Upload
+    // Validate and prepare CIN Front Image
     if (!empty($_FILES['cin_image_front']['name'])) {
-        $upload = handleFileUpload($_FILES['cin_image_front'], 'uploads/cin/');
-        if ($upload['success']) {
-            $cin_image_front = $upload['path'];
+        $validation = validateUploadedFile($_FILES['cin_image_front']);
+        if ($validation['success']) {
+            $temp_files['cin_image_front'] = $_FILES['cin_image_front']['tmp_name'];
+            $final_paths['cin_image_front'] = 'uploads/cin/' . generateUniqueFileName($_FILES['cin_image_front']['name']);
         } else {
-            $error = 'CIN Front Image: ' . $upload['error'];
+            $error = 'CIN Front Image: ' . $validation['error'];
         }
     }
 
-    // CIN Back Image Upload
-    if (!empty($_FILES['cin_image_back']['name'])) {
-        $upload = handleFileUpload($_FILES['cin_image_back'], 'uploads/cin/');
-        if ($upload['success']) {
-            $cin_image_back = $upload['path'];
+    // Validate and prepare CIN Back Image
+    if (!$error && !empty($_FILES['cin_image_back']['name'])) {
+        $validation = validateUploadedFile($_FILES['cin_image_back']);
+        if ($validation['success']) {
+            $temp_files['cin_image_back'] = $_FILES['cin_image_back']['tmp_name'];
+            $final_paths['cin_image_back'] = 'uploads/cin/' . generateUniqueFileName($_FILES['cin_image_back']['name']);
         } else {
-            $error = 'CIN Back Image: ' . $upload['error'];
+            $error = 'CIN Back Image: ' . $validation['error'];
         }
     }
 
-    // Driving License Image Upload
-    if ($has_driving_license && !empty($_FILES['driving_licence_image']['name'])) {
-        $upload = handleFileUpload($_FILES['driving_licence_image'], 'uploads/driving_license/');
-        if ($upload['success']) {
-            $driving_licence_image = $upload['path'];
+    // Validate and prepare Driving License Image
+    if (!$error && $has_driving_license && !empty($_FILES['driving_license_image']['name'])) {
+        $validation = validateUploadedFile($_FILES['driving_license_image']);
+        if ($validation['success']) {
+            $temp_files['driving_license_image'] = $_FILES['driving_license_image']['tmp_name'];
+            $final_paths['driving_license_image'] = 'uploads/driving_license/' . generateUniqueFileName($_FILES['driving_license_image']['name']);
         } else {
-            $error = 'Driving License Image: ' . $upload['error'];
+            $error = 'Driving License Image: ' . $validation['error'];
         }
     }
 
-    // Profile Picture Upload
-    if (!empty($_FILES['profile_picture']['name'])) {
-        $upload = handleFileUpload($_FILES['profile_picture'], 'uploads/profiles/');
-        if ($upload['success']) {
-            $profile_picture = $upload['path'];
+    // Validate and prepare Profile Picture
+    if (!$error && !empty($_FILES['profile_picture']['name'])) {
+        $validation = validateUploadedFile($_FILES['profile_picture']);
+        if ($validation['success']) {
+            $temp_files['profile_picture'] = $_FILES['profile_picture']['tmp_name'];
+            $final_paths['profile_picture'] = 'uploads/profiles/' . generateUniqueFileName($_FILES['profile_picture']['name']);
         } else {
-            $error = 'Profile Picture: ' . $upload['error'];
+            $error = 'Profile Picture: ' . $validation['error'];
         }
     }
 
@@ -154,6 +186,8 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
         $error = 'CNSS last part must be exactly 2 digits';
     } elseif (strlen($address) > 32) {
         $error = 'Address must not exceed 32 characters';
+    } elseif ($has_driving_license && empty($driving_license_number)) {
+        $error = 'Driving license number is required when you have a driving license';
     }
 
     if (!$error && $civil_status === 'married') {
@@ -181,19 +215,21 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     $count = $stmt->fetchColumn();
                     $employee_id = 'EMP' . str_pad($count + 1, 3, '0', STR_PAD_LEFT);
 
+
                     $pdo->beginTransaction();
 
                     $stmt = $pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'admin')");
                     $stmt->execute([$username, $email, $hashed_password]);
                     $user_id = $pdo->lastInsertId();
 
+                    // Insert employee profile with file paths
                     $stmt = $pdo->prepare("
-                        INSERT INTO employee_profiles (
+                       INSERT INTO employee_profiles (
                             user_id, first_name, last_name, employee_id, ncin, cin_image_front, cin_image_back,
                             cnss_first, cnss_last, department, position, phone, address, date_of_birth, education,
-                            has_driving_license, driving_licence_category, driving_licence_image, gender, factory,
+                            has_driving_license, driving_license_category, driving_license_number, driving_license_image, gender, factory,
                             civil_status, hire_date, salary, profile_picture, status, dismissal_reason, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, 'active', '', NOW(), NOW())
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,NOW(), 0, ?, 'active', '', NOW(), NOW())
                     ");
 
                     $stmt->execute([
@@ -202,8 +238,8 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                         $last_name,
                         $employee_id,
                         $ncin,
-                        $cin_image_front,
-                        $cin_image_back,
+                        $final_paths['cin_image_front'] ?? null,
+                        $final_paths['cin_image_back'] ?? null,
                         $cnss_first,
                         $cnss_last,
                         $department,
@@ -213,17 +249,18 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                         $date_of_birth,
                         $education,
                         $has_driving_license,
-                        $driving_licence_category,
-                        $driving_licence_image,
+                        $driving_license_category,
+                        $driving_license_number,
+                        $final_paths['driving_license_image'] ?? null,
                         $gender,
                         $factory,
                         $civil_status,
-                        $salary,
-                        $profile_picture
+                        $final_paths['profile_picture'] ?? null
                     ]);
+
                     $profile_id = $pdo->lastInsertId();
 
-                    // Insert children with correct database schema
+                    // Insert children
                     if (!empty($children)) {
                         $stmt = $pdo->prepare("INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
                         foreach ($children as $child) {
@@ -236,15 +273,46 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                         }
                     }
 
-                    $pdo->commit();
-                    $success = 'Admin registration successful! You can now log in.';
-                    $_POST = array();
+                    // NOW move the files to their final destinations
+                    $file_move_success = true;
+                    foreach ($temp_files as $field => $temp_path) {
+                        $final_path = $final_paths[$field];
+
+                        // Create directory if it doesn't exist
+                        $dir = dirname($final_path);
+                        if (!file_exists($dir)) {
+                            mkdir($dir, 0755, true);
+                        }
+
+                        // Move file
+                        if (!move_uploaded_file($temp_path, $final_path)) {
+                            $file_move_success = false;
+                            throw new Exception("Failed to move uploaded file: " . $field);
+                        }
+                    }
+
+                    if ($file_move_success) {
+                        $pdo->commit();
+                        $success = 'Admin registration successful! You can now log in.';
+                        $_POST = array(); // Clear form data
+                    } else {
+                        throw new Exception("File upload failed");
+                    }
                 }
             }
         } catch (Exception $e) {
             $pdo->rollBack();
+
+            // Clean up any files that might have been moved
+            foreach ($final_paths as $path) {
+                if (file_exists($path)) {
+                    unlink($path);
+                }
+            }
+
             $error = 'Registration failed: ' . $e->getMessage();
         }
+
     }
 }
 ?>
@@ -257,6 +325,17 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Registration - Employee Management System</title>
     <link rel="stylesheet" href="emp_register.css">
+    <style>
+        .logo {
+            height: 50px;
+            margin-right: 15px;
+        }
+
+        img {
+            overflow-clip-margin: content-box;
+            overflow: clip;
+        }
+    </style>
 
 </head>
 
@@ -344,6 +423,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                         <input type="file" id="cin_image_front" name="cin_image_front" class="file-upload-input"
                             accept="image/*" onchange="previewImage(this, 'cin_front_preview')" required>
                         <div class="file-preview" id="cin_front_preview">
+                            <img src="" alt="CIN Front Preview">
                             <div class="file-info" id="cin_front_info"></div>
                         </div>
                     </div>
@@ -354,6 +434,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                         <input type="file" id="cin_image_back" name="cin_image_back" class="file-upload-input"
                             accept="image/*" onchange="previewImage(this, 'cin_back_preview')" required>
                         <div class="file-preview" id="cin_back_preview">
+                            <img src="" alt="CIN Back Preview">
                             <div class="file-info" id="cin_back_info"></div>
                         </div>
                     </div>
@@ -364,6 +445,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     <input type="file" id="profile_picture" name="profile_picture" class="file-upload-input"
                         accept="image/*" onchange="previewImage(this, 'profile_preview')">
                     <div class="file-preview" id="profile_preview">
+                        <img src="" alt="Profile Preview">
                         <div class="file-info" id="profile_info"></div>
                     </div>
                 </div>
@@ -410,9 +492,10 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     value="<?php echo isset($_POST['education']) ? htmlspecialchars($_POST['education']) : ''; ?>"
                     required>
             </div>
-            <div class="upload-row">
-                <div class="form-group">
-                    <label>Has Driving License</label>
+
+            <div class="form-group">
+                <label>Has Driving License</label>
+                <div class="radio-group">
                     <label>
                         <input type="radio" name="has_driving_license" value="1"
                             onchange="toggleDrivingLicenseSection()" <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1') ? 'checked' : ''; ?>>
@@ -425,23 +508,29 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     </label>
                 </div>
             </div>
+
             <!-- Driving License Section -->
             <div id="driving-license-section"
-                class="driving-license-section <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license']) ? 'show' : ''; ?>">
+                class="driving-license-section <?php echo (isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1') ? 'show' : ''; ?>">
                 <div class="form-group">
-                    <label for="driving_licence_category">Driving License Category</label>
-                    <select id="driving_licence_category" name="driving_licence_category">
+                    <label for="driving_license_category">Driving License Category</label>
+                    <select id="driving_license_category" name="driving_license_category">
                         <option value="">Select Category</option>
-                        <option value="A" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'A') ? 'selected' : ''; ?>>A (Motorcycle)</option>
-                        <option value="B" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'B') ? 'selected' : ''; ?>>B (Car)</option>
-                        <option value="C" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'C') ? 'selected' : ''; ?>>C (Truck)</option>
-                        <option value="D" <?php echo (isset($_POST['driving_licence_category']) && $_POST['driving_licence_category'] === 'D') ? 'selected' : ''; ?>>D (Bus)</option>
+                        <option value="A" <?php echo (isset($_POST['driving_license_category']) && $_POST['driving_license_category'] === 'A') ? 'selected' : ''; ?>>A (Motorcycle)</option>
+                        <option value="B" <?php echo (isset($_POST['driving_license_category']) && $_POST['driving_license_category'] === 'B') ? 'selected' : ''; ?>>B (Car)</option>
+                        <option value="C" <?php echo (isset($_POST['driving_license_category']) && $_POST['driving_license_category'] === 'C') ? 'selected' : ''; ?>>C (Truck)</option>
+                        <option value="D" <?php echo (isset($_POST['driving_license_category']) && $_POST['driving_license_category'] === 'D') ? 'selected' : ''; ?>>D (Bus)</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label for="driving_license_number">Driving License Number</label>
+                    <input type="text" id="driving_license_number" name="driving_license_number"
+                        value="<?php echo isset($_POST['driving_license_number']) ? htmlspecialchars($_POST['driving_license_number']) : ''; ?>">
                 </div>
                 <div class="upload-row">
                     <div class="form-group">
-                        <label class="file-upload-label" for="driving_licence_image">Driving License Image</label>
-                        <input type="file" id="driving_licence_image" name="driving_licence_image"
+                        <label class="file-upload-label" for="driving_license_image">Driving License Image</label>
+                        <input type="file" id="driving_license_image" name="driving_license_image"
                             class="file-upload-input" accept="image/*" onchange="previewImage(this, 'license_preview')">
                         <div class="file-preview" id="license_preview">
                             <img id="license_img" src="" alt="License Preview">
@@ -454,6 +543,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             <div class="form-group">
                 <label for="gender">Gender <span class="required">*</span></label>
                 <select id="gender" name="gender" required>
+                    <option value="">Select Gender</option>
                     <option value="male" <?php echo (isset($_POST['gender']) && $_POST['gender'] === 'male') ? 'selected' : ''; ?>>Male</option>
                     <option value="female" <?php echo (isset($_POST['gender']) && $_POST['gender'] === 'female') ? 'selected' : ''; ?>>Female</option>
                 </select>
@@ -462,6 +552,7 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             <div class="form-group">
                 <label for="factory">Factory <span class="required">*</span></label>
                 <select id="factory" name="factory" required>
+                    <option value="">Select Factory</option>
                     <option value="1" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '1') ? 'selected' : ''; ?>>Factory 1</option>
                     <option value="2" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '2') ? 'selected' : ''; ?>>Factory 2</option>
                     <option value="3" <?php echo (isset($_POST['factory']) && $_POST['factory'] === '3') ? 'selected' : ''; ?>>Factory 3</option>
@@ -476,14 +567,9 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             </div>
 
             <div class="form-group">
-                <label for="salary">Salary</label>
-                <input type="number" id="salary" name="salary" step="0.01" min="0"
-                    value="<?php echo isset($_POST['salary']) ? htmlspecialchars($_POST['salary']) : ''; ?>">
-            </div>
-
-            <div class="form-group">
                 <label for="civil_status">Civil Status <span class="required">*</span></label>
                 <select id="civil_status" name="civil_status" required onchange="toggleChildrenSection()">
+                    <option value="">Select Status</option>
                     <option value="single" <?php echo (isset($_POST['civil_status']) && $_POST['civil_status'] === 'single') ? 'selected' : ''; ?>>Single</option>
                     <option value="married" <?php echo (isset($_POST['civil_status']) && $_POST['civil_status'] === 'married') ? 'selected' : ''; ?>>Married</option>
                     <option value="divorced" <?php echo (isset($_POST['civil_status']) && $_POST['civil_status'] === 'divorced') ? 'selected' : ''; ?>>Divorced</option>
@@ -574,8 +660,8 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                 section.classList.add('show');
             } else {
                 section.classList.remove('show');
-                document.getElementById('driving_licence_category').value = '';
-                document.getElementById('driving_licence_image').value = '';
+                document.getElementById('driving_license_category').value = '';
+                document.getElementById('driving_license_image').value = '';
                 document.getElementById('license_preview').style.display = 'none';
             }
         }
@@ -631,8 +717,8 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
         // Form validation
         function validateForm() {
             const hasDrivingLicense = document.getElementById('has_driving_license').checked;
-            const drivingLicenseImage = document.getElementById('driving_licence_image');
-            const drivingLicenseCategory = document.getElementById('driving_licence_category');
+            const drivingLicenseImage = document.getElementById('driving_license_image');
+            const drivingLicenseCategory = document.getElementById('driving_license_category');
 
             if (hasDrivingLicense) {
                 if (!drivingLicenseCategory.value) {
