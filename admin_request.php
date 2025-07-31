@@ -3,6 +3,28 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
+// Add missing CSRF functions
+function generateCSRFToken()
+{
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verifyCSRFToken($token)
+{
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// Add missing sanitize function if not in config.php
+if (!function_exists('sanitize')) {
+    function sanitize($input)
+    {
+        return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+    }
+}
+
 $error = '';
 $success = '';
 $filter_status = $_GET['status'] ?? 'all';
@@ -38,7 +60,7 @@ if (!empty($search_query)) {
 
 $where_clause = implode(' AND ', $where_conditions);
 
-// Validate sort parameters
+// Validate sort parameters - SECURE VERSION
 $valid_sort_columns = ['created_at', 'priority', 'status', 'subject', 'first_name', 'last_name'];
 $sort_by = in_array($sort_by, $valid_sort_columns) ? $sort_by : 'created_at';
 $sort_order = strtoupper($sort_order) === 'ASC' ? 'ASC' : 'DESC';
@@ -56,40 +78,23 @@ $total_requests = $count_stmt->fetch()['total'];
 $total_pages = ceil($total_requests / $per_page);
 
 // Ensure integer values for pagination
-$per_page = (int) 10;
-$offset = (int) (($page - 1) * $per_page);
+$per_page = (int) $per_page;
+$offset = (int) $offset;
 
-// Validate sort parameters
-$valid_sort_columns = ['created_at', 'priority', 'status', 'subject', 'first_name', 'last_name'];
-$sort_by = in_array($sort_by, $valid_sort_columns) ? $sort_by : 'created_at';
-$sort_order = strtoupper($sort_order) === 'ASC' ? 'ASC' : 'DESC';
+// Secure ORDER BY mapping
+$order_columns = [
+    'created_at' => 'er.created_at',
+    'priority' => 'priority_order',
+    'status' => 'er.status',
+    'subject' => 'er.subject',
+    'first_name' => 'ep.first_name',
+    'last_name' => 'ep.last_name'
+];
 
-// Determine the ORDER BY column/expression
-$order_by_clause = '';
-switch ($sort_by) {
-    case 'priority':
-        $order_by_clause = "priority_order $sort_order";
-        break;
-    case 'created_at':
-        $order_by_clause = "er.created_at $sort_order";
-        break;
-    case 'subject':
-        $order_by_clause = "er.subject $sort_order";
-        break;
-    case 'status':
-        $order_by_clause = "er.status $sort_order";
-        break;
-    case 'first_name':
-        $order_by_clause = "ep.first_name $sort_order";
-        break;
-    case 'last_name':
-        $order_by_clause = "ep.last_name $sort_order";
-        break;
-    default:
-        $order_by_clause = "er.created_at $sort_order";
-}
+$order_column = isset($order_columns[$sort_by]) ? $order_columns[$sort_by] : 'er.created_at';
+$order_by_clause = "$order_column $sort_order";
 
-// Fetch filtered and sorted requests
+// Fetch filtered and sorted requests - SECURE VERSION
 $stmt = $pdo->prepare("
     SELECT er.*, ep.first_name, ep.last_name, u.email,
            CASE 
@@ -104,9 +109,12 @@ $stmt = $pdo->prepare("
     JOIN users u ON ep.user_id = u.id
     WHERE $where_clause
     ORDER BY $order_by_clause
-    LIMIT $per_page OFFSET $offset
+    LIMIT ? OFFSET ?
 ");
-$stmt->execute($params); // Only pass WHERE clause parameters
+
+// Add pagination parameters to the params array
+$query_params = array_merge($params, [$per_page, $offset]);
+$stmt->execute($query_params);
 $requests = $stmt->fetchAll();
 
 // Fetch admin notifications with better filtering
@@ -137,10 +145,10 @@ $stats_stmt = $pdo->prepare("
 $stats_stmt->execute();
 $stats = $stats_stmt->fetch();
 
-// Enhanced request response handling
+// Enhanced request response handling with better error handling
 if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_token'])) {
     $request_id = (int) $_POST['request_id'];
-    $response = sanitize($_POST['admin_response']);
+    $response = trim(sanitize($_POST['admin_response']));
     $status = sanitize($_POST['status']);
     $assign_to = !empty($_POST['assign_to']) ? (int) $_POST['assign_to'] : null;
     $priority = sanitize($_POST['priority']);
@@ -269,7 +277,7 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
                     $assigned_user_stmt->execute([$assign_to]);
                     $assigned_user = $assigned_user_stmt->fetch();
                     if ($assigned_user) {
-                        $notification_message .= " and assigned to " . $assigned_user['username'];
+                        $notification_message .= " and assigned to " . htmlspecialchars($assigned_user['username']);
                     }
                 }
 
@@ -294,7 +302,7 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
                 $assign_notification_stmt->execute([
                     $assign_to,
                     "New Request Assignment",
-                    "You have been assigned to handle a " . $priority . " priority request",
+                    "You have been assigned to handle a " . htmlspecialchars($priority) . " priority request",
                     $request_id
                 ]);
             }
@@ -316,36 +324,37 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
             $pdo->commit();
             $success = 'Response submitted successfully! Request updated with ' . ucfirst($status) . ' status.';
 
-            // Refresh requests data
+            // Refresh requests data with the same secure query
             $stmt = $pdo->prepare("
-    SELECT er.*, ep.first_name, ep.last_name, u.email,
-           CASE 
-               WHEN er.priority = 'urgent' THEN 1
-               WHEN er.priority = 'high' THEN 2
-               WHEN er.priority = 'normal' THEN 3
-               WHEN er.priority = 'low' THEN 4
-               ELSE 5
-           END as priority_order
-    FROM employee_requests er
-    JOIN employee_profiles ep ON er.employee_id = ep.id
-    JOIN users u ON ep.user_id = u.id
-    WHERE $where_clause
-    ORDER BY $order_by_clause
-    LIMIT $per_page OFFSET $offset
-");
-            $stmt->execute($params);
+                SELECT er.*, ep.first_name, ep.last_name, u.email,
+                       CASE 
+                           WHEN er.priority = 'urgent' THEN 1
+                           WHEN er.priority = 'high' THEN 2
+                           WHEN er.priority = 'normal' THEN 3
+                           WHEN er.priority = 'low' THEN 4
+                           ELSE 5
+                       END as priority_order
+                FROM employee_requests er
+                JOIN employee_profiles ep ON er.employee_id = ep.id
+                JOIN users u ON ep.user_id = u.id
+                WHERE $where_clause
+                ORDER BY $order_by_clause
+                LIMIT ? OFFSET ?
+            ");
+            $stmt->execute($query_params);
             $requests = $stmt->fetchAll();
 
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Failed to submit response: ' . $e->getMessage();
+            $error = 'Failed to submit response: ' . htmlspecialchars($e->getMessage());
+            error_log('Admin request response error: ' . $e->getMessage());
         }
     } else {
-        $error = implode('<br>', $validation_errors);
+        $error = implode('<br>', array_map('htmlspecialchars', $validation_errors));
     }
 }
 
-// Handle bulk actions
+// Handle bulk actions with improved validation
 if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token'])) {
     $bulk_action = $_POST['bulk_action'];
     $selected_requests = $_POST['selected_requests'] ?? [];
@@ -358,47 +367,66 @@ if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token
         try {
             $pdo->beginTransaction();
             $bulk_success_count = 0;
+            $bulk_errors = [];
 
             foreach ($selected_requests as $req_id) {
                 $req_id = (int) $req_id;
 
-                switch ($bulk_action) {
-                    case 'mark_pending':
-                        $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'pending', updated_at = NOW() WHERE id = ?");
-                        $bulk_stmt->execute([$req_id]);
-                        break;
-                    case 'mark_in_progress':
-                        $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'in_progress', updated_at = NOW() WHERE id = ?");
-                        $bulk_stmt->execute([$req_id]);
-                        break;
-                    case 'mark_completed':
-                        $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'completed', updated_at = NOW() WHERE id = ?");
-                        $bulk_stmt->execute([$req_id]);
-                        break;
-                    case 'assign_to_me':
-                        $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET assigned_to = ?, updated_at = NOW() WHERE id = ?");
-                        $bulk_stmt->execute([$_SESSION['user_id'], $req_id]);
-                        break;
+                // Validate that request exists
+                $check_stmt = $pdo->prepare("SELECT id FROM employee_requests WHERE id = ?");
+                $check_stmt->execute([$req_id]);
+                if (!$check_stmt->fetch()) {
+                    $bulk_errors[] = "Request ID $req_id not found";
+                    continue;
                 }
-                $bulk_success_count++;
+
+                try {
+                    switch ($bulk_action) {
+                        case 'mark_pending':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'pending', updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$req_id]);
+                            break;
+                        case 'mark_in_progress':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'in_progress', updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$req_id]);
+                            break;
+                        case 'mark_completed':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'completed', updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$req_id]);
+                            break;
+                        case 'assign_to_me':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET assigned_to = ?, updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$_SESSION['user_id'], $req_id]);
+                            break;
+                    }
+                    $bulk_success_count++;
+                } catch (Exception $e) {
+                    $bulk_errors[] = "Failed to update request ID $req_id: " . $e->getMessage();
+                }
             }
 
-            $pdo->commit();
-            $success = "Bulk action completed successfully! Updated $bulk_success_count request(s).";
+            if (empty($bulk_errors)) {
+                $pdo->commit();
+                $success = "Bulk action completed successfully! Updated $bulk_success_count request(s).";
+            } else {
+                $pdo->rollBack();
+                $error = "Bulk action partially failed. Errors: " . implode(', ', $bulk_errors);
+            }
 
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Bulk action failed: ' . $e->getMessage();
+            $error = 'Bulk action failed: ' . htmlspecialchars($e->getMessage());
+            error_log('Bulk action error: ' . $e->getMessage());
         }
     }
 }
 
-// Get available users for assignment
+// Get available users for assignment - CORRECTED SQL
 $users_stmt = $pdo->prepare("
     SELECT u.id, u.username, u.email 
-    FROM users u ,employee_profiles ep
-    WHERE ep.user_id = u.id
-    AND u.role IN ('admin', 'employee') AND ep.status = 'active'
+    FROM users u 
+    INNER JOIN employee_profiles ep ON ep.user_id = u.id
+    WHERE u.role IN ('admin', 'employee') AND ep.status = 'active'
     ORDER BY u.username
 ");
 $users_stmt->execute();
@@ -691,8 +719,8 @@ $available_users = $users_stmt->fetchAll();
                 <span class="admin-badge">ADMIN</span>
                 <a href="dashboard.php" class="nav-link">Dashboard</a>
                 <a href="employees_listing.php" class="nav-link">Employees</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
                 <a href="profile.php" class="nav-link">My Profile</a>
+                <a href="admin_request.php" class="nav-link">Requests</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

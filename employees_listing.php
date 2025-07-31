@@ -608,6 +608,7 @@ function calculateAge($dateOfBirth)
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
+                <a href="admin_request.php" class="nav-link">Requests</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

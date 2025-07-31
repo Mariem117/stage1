@@ -508,9 +508,10 @@ function isImage($filename) {
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                     <a href="employees_listing.php" class="nav-link">Employees</a>
                 <?php else: ?>
-                    <a href="emp_request.php" class="nav-link">Request</a>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
+                <a href="admin_request.php" class="nav-link">Requests</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

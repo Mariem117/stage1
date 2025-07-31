@@ -45,7 +45,7 @@ if ($_POST && isset($_POST['submit_request']) && verifyCSRFToken($_POST['csrf_to
             $stmt->execute([$employee['employee_profile_id'], $subject, $message, $priority]);
             $request_id = $pdo->lastInsertId();
 
-            // Begin transaction for notifications
+            // Begin transaction for notifications only
             $pdo->beginTransaction();
 
             // Get admin IDs
@@ -83,7 +83,10 @@ if ($_POST && isset($_POST['submit_request']) && verifyCSRFToken($_POST['csrf_to
             header('Location: emp_request.php?success=1');
             exit();
         } catch (Exception $e) {
-            $pdo->rollBack();
+            // Only rollback if there's an active transaction
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $error = 'Failed to submit request: ' . $e->getMessage();
         }
     }
@@ -128,6 +131,37 @@ $notifications = $stmt->fetchAll();
         img {
             overflow-clip-margin: content-box;
             overflow: clip;
+        }
+
+        .mark-read {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .mark-read:hover {
+            background: #0056b3;
+        }
+
+        .notification-item {
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+        }
+
+        .notification-item:last-child {
+            border-bottom: none;
+        }
+
+        .notification-unread {
+            font-weight: bold;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
         }
     </style>
 </head>
@@ -194,24 +228,24 @@ $notifications = $stmt->fetchAll();
                 <?php if (empty($notifications)): ?>
                     <p>No notifications available.</p>
                 <?php else: ?>
-                    <ul class="dept-list">
+                    <div class="notifications-list">
                         <?php foreach ($notifications as $notification): ?>
-                            <li class="dept-item">
-                                <span class="dept-name <?php echo $notification['is_read'] ? '' : 'font-bold'; ?>">
+                            <div class="notification-item <?php echo !$notification['is_read'] ? 'notification-unread' : ''; ?>"
+                                id="notification-<?php echo $notification['id']; ?>">
+                                <div class="dept-name">
                                     <?php echo htmlspecialchars($notification['title']); ?>
                                     <?php if (!$notification['is_read']): ?>
                                         <span class="admin-badge">New</span>
+                                        <button class="mark-read" data-notification-id="<?php echo $notification['id']; ?>">Mark as
+                                            Read</button>
                                     <?php endif; ?>
-                                </span>
-                                <span><?php echo htmlspecialchars($notification['message']); ?></span>
-                                <span><?php echo date('F j, Y H:i', strtotime($notification['created_at'])); ?></span>
-                                <?php if (!$notification['is_read']): ?>
-                                    <button class="btn btn-small mark-read"
-                                        data-notification-id="<?php echo $notification['id']; ?>">Mark as Read</button>
-                                <?php endif; ?>
-                            </li>
+                                </div>
+                                <div><?php echo htmlspecialchars($notification['message']); ?></div>
+                                <div><small><?php echo date('F j, Y H:i', strtotime($notification['created_at'])); ?></small>
+                                </div>
+                            </div>
                         <?php endforeach; ?>
-                    </ul>
+                    </div>
                 <?php endif; ?>
             </div>
 
@@ -239,7 +273,6 @@ $notifications = $stmt->fetchAll();
                                     <td><a
                                             href="request_detail.php?id=<?php echo $request['id']; ?>"><?php echo htmlspecialchars($request['subject']); ?></a>
                                     </td>
-                                    <td><?php echo htmlspecialchars($request['subject']); ?></td>
                                     <td>
                                         <span class="status-badge status-<?php echo $request['status']; ?>">
                                             <?php echo ucfirst($request['status']); ?>
@@ -252,84 +285,65 @@ $notifications = $stmt->fetchAll();
                             <?php endforeach; ?>
                         </tbody>
                     </table>
-                    </table>
                 <?php endif; ?>
             </div>
         </div>
     </div>
 
     <script>
-        // Handle mark as read
-        document.querySelectorAll('.mark-read').forEach(button => {
-            button.addEventListener('click', function () {
-                const notificationId = this.dataset.notificationId;
-                fetch('mark_notification_read.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        notification_id: notificationId,
-                        csrf_token: '<?php echo generateCSRFToken(); ?>'
-                    })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            this.closest('.dept-item').querySelector('.dept-name').classList.remove('font-bold');
-                            this.closest('.dept-item').querySelector('.admin-badge').remove();
-                            this.remove();
-                        } else {
-                            alert('Failed to mark notification as read: ' + (data.message || 'Unknown error'));
-                        }
-                    })
-                    .catch(error => {
-                        alert('Error: ' + error.message);
-                    });
-            });
-        });
-        // Fetch CSRF token dynamically
-        fetch('get_csrf_token.php')
-            .then(response => response.json())
-            .then(tokenData => {
-                document.querySelectorAll('.mark-read').forEach(button => {
-                    button.addEventListener('click', function () {
-                        const notificationId = this.dataset.notificationId;
+        // Handle mark as read functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            const markReadButtons = document.querySelectorAll('.mark-read');
 
-                        fetch('mark_notification_read.php', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                notification_id: notificationId,
-                                csrf_token: tokenData.csrf_token
-                            })
+            markReadButtons.forEach(button => {
+                button.addEventListener('click', function () {
+                    const notificationId = this.dataset.notificationId;
+                    const notificationElement = document.getElementById('notification-' + notificationId);
+
+                    // Disable button to prevent multiple clicks
+                    this.disabled = true;
+                    this.textContent = 'Marking...';
+
+                    fetch('mark_notification_read.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            notification_id: parseInt(notificationId),
+                            csrf_token: '<?php echo generateCSRFToken(); ?>'
                         })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.success) {
-                                    const deptItem = this.closest('.dept-item');
-                                    const deptName = deptItem.querySelector('.dept-name');
-                                    const adminBadge = deptItem.querySelector('.admin-badge');
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // Remove unread styling
+                                notificationElement.classList.remove('notification-unread');
 
-                                    if (deptName) {
-                                        deptName.classList.remove('font-bold');
-                                    }
-                                    if (adminBadge) {
-                                        adminBadge.remove();
-                                    }
-                                    this.remove();
-                                } else {
-                                    alert('Failed to mark notification as read: ' + (data.message || 'Unknown error'));
+                                // Remove "New" badge
+                                const adminBadge = notificationElement.querySelector('.admin-badge');
+                                if (adminBadge) {
+                                    adminBadge.remove();
                                 }
-                            })
-                            .catch(error => {
-                                alert('Error: ' + error.message);
-                            });
-                    });
+
+                                // Remove the mark as read button
+                                this.remove();
+                            } else {
+                                // Re-enable button on error
+                                this.disabled = false;
+                                this.textContent = 'Mark as Read';
+                                alert('Failed to mark notification as read: ' + (data.message || 'Unknown error'));
+                            }
+                        })
+                        .catch(error => {
+                            // Re-enable button on error
+                            this.disabled = false;
+                            this.textContent = 'Mark as Read';
+                            alert('Error: ' + error.message);
+                        });
                 });
             });
+        });
     </script>
 </body>
 

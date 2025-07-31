@@ -252,14 +252,15 @@ if ($_POST && isset($_POST['upload_attachment']) && verifyCSRFToken($_POST['csrf
             <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
                 <?php if ($is_admin): ?>
+                    <<?php if ($_SESSION['role'] === 'admin'): ?>
                     <span class="admin-badge">ADMIN</span>
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                     <a href="employees_listing.php" class="nav-link">Employees</a>
-                    <a href="admin_request.php" class="nav-link">Requests</a>
+                <?php else: ?>
+                    <a href="dashboard.php" class="nav-link">Dashboard</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="emp_request.php" class="nav-link">Requests</a>
-                <a href="notifications.php" class="nav-link">Notifications</a>
+                <a href="admin_request.php" class="nav-link">Requests</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>
