@@ -1,380 +1,423 @@
 <?php
 require_once 'config.php';
 requireLogin();
+requireAdmin();
+
+// Add missing sanitize function if not in config.php
+if (!function_exists('sanitize')) {
+    function sanitize($input)
+    {
+        return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+    }
+}
 
 $error = '';
 $success = '';
+$filter_status = $_GET['status'] ?? 'all';
+$filter_priority = $_GET['priority'] ?? 'all';
+$search_query = $_GET['search'] ?? '';
+$sort_by = $_GET['sort'] ?? 'created_at';
+$sort_order = $_GET['order'] ?? 'DESC';
 
-// Get employee profile
+// Pagination
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$per_page = 10;
+$offset = ($page - 1) * $per_page;
+
+// Build WHERE clause for filtering
+$where_conditions = ['1=1'];
+$params = [];
+
+if ($filter_status !== 'all') {
+    $where_conditions[] = 'er.status = ?';
+    $params[] = $filter_status;
+}
+
+if ($filter_priority !== 'all') {
+    $where_conditions[] = 'er.priority = ?';
+    $params[] = $filter_priority;
+}
+
+if (!empty($search_query)) {
+    $where_conditions[] = '(er.subject LIKE ? OR er.message LIKE ? OR ep.first_name LIKE ? OR ep.last_name LIKE ? OR u.email LIKE ?)';
+    $search_param = '%' . $search_query . '%';
+    $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param, $search_param]);
+}
+
+$where_clause = implode(' AND ', $where_conditions);
+
+// Validate sort parameters - SECURE VERSION
+$valid_sort_columns = ['created_at', 'priority', 'status', 'subject', 'first_name', 'last_name'];
+$sort_by = in_array($sort_by, $valid_sort_columns) ? $sort_by : 'created_at';
+$sort_order = strtoupper($sort_order) === 'ASC' ? 'ASC' : 'DESC';
+
+// Get total count for pagination
+$count_stmt = $pdo->prepare("
+    SELECT COUNT(*) as total
+    FROM employee_requests er
+    JOIN employee_profiles ep ON er.employee_id = ep.id
+    JOIN users u ON ep.user_id = u.id
+    WHERE $where_clause
+");
+$count_stmt->execute($params);
+$total_requests = $count_stmt->fetch()['total'];
+$total_pages = ceil($total_requests / $per_page);
+
+// Ensure integer values for pagination
+$per_page = (int) $per_page;
+$offset = (int) $offset;
+
+// Secure ORDER BY mapping
+$order_columns = [
+    'created_at' => 'er.created_at',
+    'priority' => 'priority_order',
+    'status' => 'er.status',
+    'subject' => 'er.subject',
+    'first_name' => 'ep.first_name',
+    'last_name' => 'ep.last_name'
+];
+
+$order_column = isset($order_columns[$sort_by]) ? $order_columns[$sort_by] : 'er.created_at';
+$order_by_clause = "$order_column $sort_order";
+
+// Fetch filtered and sorted requests - SECURE VERSION
 $stmt = $pdo->prepare("
-    SELECT u.*, ep.* 
-    FROM users u 
-    LEFT JOIN employee_profiles ep ON u.id = ep.user_id 
-    WHERE u.id = ?
+    SELECT er.*, ep.first_name, ep.last_name, u.email,
+           CASE 
+               WHEN er.priority = 'urgent' THEN 1
+               WHEN er.priority = 'high' THEN 2
+               WHEN er.priority = 'normal' THEN 3
+               WHEN er.priority = 'low' THEN 4
+               ELSE 5
+           END as priority_order
+    FROM employee_requests er
+    JOIN employee_profiles ep ON er.employee_id = ep.id
+    JOIN users u ON ep.user_id = u.id
+    WHERE $where_clause
+    ORDER BY $order_by_clause
+    LIMIT $per_page OFFSET $offset
+");
+
+// Execute with only the filter parameters
+$stmt->execute($params);
+$requests = $stmt->fetchAll();
+
+// Fetch admin notifications with better filtering
+$stmt = $pdo->prepare("
+    SELECT n.*, COUNT(n.id) as notification_count
+    FROM notifications n
+    WHERE n.user_id = ? AND n.type IN ('new_request', 'request_updated', 'urgent_request')
+    GROUP BY n.type, n.is_read
+    ORDER BY n.created_at DESC
+    LIMIT 10
 ");
 $stmt->execute([$_SESSION['user_id']]);
-$employee = $stmt->fetch();
+$notifications = $stmt->fetchAll();
 
-// Get children
-$stmt = $pdo->prepare("
-    SELECT ec.* 
-    FROM employee_children ec 
-    JOIN employee_profiles ep ON ec.employee_profile_id = ep.id 
-    WHERE ep.user_id = ?
-    ORDER BY ec.id
+// Get request statistics
+$stats_stmt = $pdo->prepare("
+    SELECT 
+        COUNT(*) as total_requests,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_requests,
+        COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress_requests,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_requests,
+        COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_requests,
+        COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_requests,
+        COUNT(CASE WHEN priority = 'high' THEN 1 END) as high_priority_requests,
+        COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as recent_requests
+    FROM employee_requests
 ");
-$stmt->execute([$_SESSION['user_id']]);
-$children = $stmt->fetchAll();
+$stats_stmt->execute();
+$stats = $stats_stmt->fetch();
 
-if (!$employee) {
-    header('Location: login.php');
-    exit();
-}
+// Enhanced request response handling with better error handling
+if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_token'])) {
+    $request_id = (int) $_POST['request_id'];
+    $response = trim(sanitize($_POST['admin_response']));
+    $status = sanitize($_POST['status']);
+    $assign_to = !empty($_POST['assign_to']) ? (int) $_POST['assign_to'] : null;
+    $priority = sanitize($_POST['priority']);
+    $is_internal_note = isset($_POST['is_internal_note']) ? 1 : 0;
+    $follow_up_date = !empty($_POST['follow_up_date']) ? $_POST['follow_up_date'] : null;
 
-// Function to calculate age from date of birth
-function calculateAge($dob)
-{
-    if (!$dob)
-        return null;
-    $birthDate = new DateTime($dob);
-    $today = new DateTime();
-    $age = $today->diff($birthDate)->y;
-    return $age >= 0 ? $age : null;
-}
+    // Enhanced validation
+    $validation_errors = [];
 
-// Function to update children count in employee_profiles
-function updateChildrenCount($pdo, $user_id)
-{
-    // Count actual children records
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) 
-        FROM employee_children ec 
-        JOIN employee_profiles ep ON ec.employee_profile_id = ep.id 
-        WHERE ep.user_id = ?
+    if (empty($response)) {
+        $validation_errors[] = 'Response message is required';
+    } elseif (strlen($response) < 10) {
+        $validation_errors[] = 'Response must be at least 10 characters long';
+    } elseif (strlen($response) > 2000) {
+        $validation_errors[] = 'Response cannot exceed 2000 characters';
+    }
+
+    if (!in_array($status, ['pending', 'in_progress', 'completed', 'rejected', 'on_hold'])) {
+        $validation_errors[] = 'Invalid status selected';
+    }
+
+    if (!in_array($priority, ['low', 'normal', 'high', 'urgent'])) {
+        $validation_errors[] = 'Invalid priority selected';
+    }
+
+    // Validate assignment
+    if ($assign_to) {
+        $assign_stmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role IN ('admin', 'manager')");
+        $assign_stmt->execute([$assign_to]);
+        if (!$assign_stmt->fetch()) {
+            $validation_errors[] = 'Invalid user selected for assignment';
+        }
+    }
+
+    // Validate follow-up date
+    if ($follow_up_date) {
+        $follow_up_timestamp = strtotime($follow_up_date);
+        if (!$follow_up_timestamp || $follow_up_timestamp <= time()) {
+            $validation_errors[] = 'Follow-up date must be in the future';
+        }
+    }
+
+    // Check if request exists and get current data
+    $current_request_stmt = $pdo->prepare("
+        SELECT er.*, ep.user_id as employee_user_id 
+        FROM employee_requests er 
+        JOIN employee_profiles ep ON er.employee_id = ep.id 
+        WHERE er.id = ?
     ");
-    $stmt->execute([$user_id]);
-    $count = $stmt->fetchColumn();
+    $current_request_stmt->execute([$request_id]);
+    $current_request = $current_request_stmt->fetch();
 
-    // Update the children count in employee_profiles
-    $stmt = $pdo->prepare("
-        UPDATE employee_profiles 
-        SET children = ? 
-        WHERE user_id = ?
-    ");
-    $stmt->execute([$count, $user_id]);
+    if (!$current_request) {
+        $validation_errors[] = 'Request not found';
+    }
 
-    return $count;
-}
+    if (empty($validation_errors)) {
+        try {
+            $pdo->beginTransaction();
 
-// Handle profile update
-if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_token'])) {
-    $first_name = sanitize($_POST['first_name']);
-    $last_name = sanitize($_POST['last_name']);
-    $employee_id = sanitize($employee['employee_id']); // Read-only
-    $email = sanitize($_POST['email']);
-    $phone = sanitize($_POST['phone']);
-    $address = sanitize(substr($_POST['address'], 0, 32));
-    $date_of_birth = $_POST['date_of_birth'] ? $_POST['date_of_birth'] : null;
-    $civil_status = sanitize($_POST['civil_status']);
-    $ncin = sanitize($_POST['ncin']);
-    $cnss_first = sanitize($_POST['cnss_first']);
-    $cnss_last = sanitize($_POST['cnss_last']);
-    $education = sanitize($_POST['education']);
-    $has_driving_license = isset($_POST['has_driving_license']) && $_POST['has_driving_license'] == '1' ? 1 : 0;
-    $driving_license_number = sanitize($_POST['driving_license_number'] ?? '');
-    $driving_license_category = sanitize($_POST['driving_license_category'] ?? '');
-    $gender = sanitize($_POST['gender']);
-    $factory = sanitize($_POST['factory']);
-    $children_data = isset($_POST['children']) ? $_POST['children'] : [];
-    $children_to_remove = isset($_POST['remove_child']) ? array_map('intval', $_POST['remove_child']) : [];
-    $department = $employee['department']; // Read-only
-    $position = $employee['position']; // Read-only
-    $hire_date = $employee['hire_date']; // Read-only
-    $salary = $employee['salary']; // Read-only
-    $status = $employee['status']; // Read-only
-    $dismissal_reason = $employee['dismissal_reason']; // Read-only
-    $created_at = $employee['created_at']; // Read-only
-    $updated_at = date('Y-m-d H:i:s'); // Update timestamp
+            // Update request
+            $update_stmt = $pdo->prepare("
+                UPDATE employee_requests
+                SET status = ?, admin_response = ?, admin_id = ?, priority = ?, 
+                    assigned_to = ?, follow_up_date = ?, responded_at = NOW(), updated_at = NOW()
+                WHERE id = ?
+            ");
+            $update_result = $update_stmt->execute([
+                $status,
+                $response,
+                $_SESSION['user_id'],
+                $priority,
+                $assign_to,
+                $follow_up_date,
+                $request_id
+            ]);
 
-    // Handle file uploads
-    $cin_image_front = $employee['cin_image_front'];
-    $cin_image_back = $employee['cin_image_back'];
-    $driving_license_image = $employee['driving_license_image'];
-    $profile_picture = $employee['profile_picture'];
+            if (!$update_result) {
+                throw new Exception('Failed to update request');
+            }
 
-    if (!empty($_FILES['cin_image_front']['name'])) {
-        $upload = handleFileUpload($_FILES['cin_image_front'], 'uploads/');
-        if ($upload['success']) {
-            $cin_image_front = $upload['path'];
-        } else {
-            $error = $upload['error'];
+            // Record status change in history if status changed
+            if ($current_request['status'] !== $status) {
+                $status_history_stmt = $pdo->prepare("
+                    INSERT INTO request_status_history (request_id, old_status, new_status, changed_by, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                ");
+                $status_history_stmt->execute([
+                    $request_id,
+                    $current_request['status'],
+                    $status,
+                    $_SESSION['user_id'],
+                    "Status changed via admin response. Priority: $priority"
+                ]);
+            }
+
+            // Record assignment change if assigned
+            if ($assign_to && $current_request['assigned_to'] != $assign_to) {
+                $assignment_stmt = $pdo->prepare("
+                    INSERT INTO request_assignments (request_id, assigned_from, assigned_to, assigned_by, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                ");
+                $assignment_stmt->execute([
+                    $request_id,
+                    $current_request['assigned_to'],
+                    $assign_to,
+                    $_SESSION['user_id'],
+                    "Assigned via admin response"
+                ]);
+            }
+
+            // Add response as comment
+            $comment_stmt = $pdo->prepare("
+                INSERT INTO request_comments (request_id, user_id, comment, is_internal)
+                VALUES (?, ?, ?, ?)
+            ");
+            $comment_stmt->execute([$request_id, $_SESSION['user_id'], $response, $is_internal_note]);
+
+            // Create notification for employee (unless it's an internal note)
+            if (!$is_internal_note) {
+                $notification_title = "Request Update - " . ucfirst($status);
+                $notification_message = "Your request has been updated with status: " . ucfirst($status);
+
+                if ($assign_to) {
+                    $assigned_user_stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
+                    $assigned_user_stmt->execute([$assign_to]);
+                    $assigned_user = $assigned_user_stmt->fetch();
+                    if ($assigned_user) {
+                        $notification_message .= " and assigned to " . htmlspecialchars($assigned_user['username']);
+                    }
+                }
+
+                $employee_notification_stmt = $pdo->prepare("
+                    INSERT INTO notifications (user_id, type, title, message, related_id)
+                    VALUES (?, 'request_responded', ?, ?, ?)
+                ");
+                $employee_notification_stmt->execute([
+                    $current_request['employee_user_id'],
+                    $notification_title,
+                    $notification_message,
+                    $request_id
+                ]);
+            }
+
+            // Create notification for assigned user if different from current admin
+            if ($assign_to && $assign_to != $_SESSION['user_id']) {
+                $assign_notification_stmt = $pdo->prepare("
+                    INSERT INTO notifications (user_id, type, title, message, related_id)
+                    VALUES (?, 'request_assigned', ?, ?, ?)
+                ");
+                $assign_notification_stmt->execute([
+                    $assign_to,
+                    "New Request Assignment",
+                    "You have been assigned to handle a " . htmlspecialchars($priority) . " priority request",
+                    $request_id
+                ]);
+            }
+
+            // Create follow-up reminder if date is set
+            if ($follow_up_date) {
+                $reminder_stmt = $pdo->prepare("
+                    INSERT INTO request_reminders (request_id, admin_id, reminder_date, message)
+                    VALUES (?, ?, ?, ?)
+                ");
+                $reminder_stmt->execute([
+                    $request_id,
+                    $_SESSION['user_id'],
+                    $follow_up_date,
+                    "Follow up on request response"
+                ]);
+            }
+
+            $pdo->commit();
+            $success = 'Response submitted successfully! Request updated with ' . ucfirst($status) . ' status.';
+
+            // Refresh requests data with the same secure query
+            $stmt = $pdo->prepare("
+                SELECT er.*, ep.first_name, ep.last_name, u.email,
+                       CASE 
+                           WHEN er.priority = 'urgent' THEN 1
+                           WHEN er.priority = 'high' THEN 2
+                           WHEN er.priority = 'normal' THEN 3
+                           WHEN er.priority = 'low' THEN 4
+                           ELSE 5
+                       END as priority_order
+                FROM employee_requests er
+                JOIN employee_profiles ep ON er.employee_id = ep.id
+                JOIN users u ON ep.user_id = u.id
+                WHERE $where_clause
+                ORDER BY $order_by_clause
+                LIMIT $per_page OFFSET $offset
+            ");
+            $stmt->execute($params);
+            $requests = $stmt->fetchAll();
+
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error = 'Failed to submit response: ' . htmlspecialchars($e->getMessage());
+            error_log('Admin request response error: ' . $e->getMessage());
         }
-    }
-
-    if (!empty($_FILES['cin_image_back']['name'])) {
-        $upload = handleFileUpload($_FILES['cin_image_back'], 'uploads/');
-        if ($upload['success']) {
-            $cin_image_back = $upload['path'];
-        } else {
-            $error = $upload['error'];
-        }
-    }
-
-    if ($has_driving_license && !empty($_FILES['driving_license_image']['name'])) {
-        $upload = handleFileUpload($_FILES['driving_license_image'], 'uploads/');
-        if ($upload['success']) {
-            $driving_license_image = $upload['path'];
-        } else {
-            $error = $upload['error'];
-        }
-    }
-    if ($has_driving_license && empty($driving_license_number)) {
-        $error = 'Driving license number is required';
-    }
-    if (!empty($_FILES['profile_picture']['name'])) {
-        $upload = handleFileUpload($_FILES['profile_picture'], 'uploads/');
-        if ($upload['success']) {
-            $profile_picture = $upload['path'];
-        } else {
-            $error = $upload['error'];
-        }
-    }
-
-    // Validation
-    if (empty($first_name) || empty($last_name) || empty($email) || empty($civil_status) || empty($gender)) {
-        $error = 'Please fill in all required fields';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address';
-    } elseif (!in_array($civil_status, ['single', 'married', 'divorced', 'widowed'])) {
-        $error = 'Invalid civil status';
-    } elseif (!in_array($gender, ['male', 'female'])) {
-        $error = 'Invalid gender';
-    } elseif (!in_array($factory, ['1', '2', '3', '4'])) {
-        $error = 'Invalid factory selection';
     } else {
-        // Validate children data
-        foreach ($children_data as $index => $child) {
-            // Check if all required fields are provided for this child
-            $hasFirstName = !empty(trim($child['child_first_name'] ?? ''));
-            $hasSecondName = !empty(trim($child['child_second_name'] ?? ''));
-            $hasBirthDate = !empty(trim($child['child_date_of_birth'] ?? ''));
+        $error = implode('<br>', array_map('htmlspecialchars', $validation_errors));
+    }
+}
 
-            // If any field is provided, all must be provided
-            if ($hasFirstName || $hasSecondName || $hasBirthDate) {
-                if (!$hasFirstName || !$hasSecondName || !$hasBirthDate) {
-                    $error = "Child " . ($index + 1) . ": All fields (First Name, Second Name, Birth Date) must be filled";
-                    break;
+// Handle bulk actions with improved validation
+if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token'])) {
+    $bulk_action = $_POST['bulk_action'];
+    $selected_requests = $_POST['selected_requests'] ?? [];
+
+    if (empty($selected_requests)) {
+        $error = 'No requests selected for bulk action';
+    } elseif (!in_array($bulk_action, ['mark_pending', 'mark_in_progress', 'mark_completed', 'assign_to_me'])) {
+        $error = 'Invalid bulk action';
+    } else {
+        try {
+            $pdo->beginTransaction();
+            $bulk_success_count = 0;
+            $bulk_errors = [];
+
+            foreach ($selected_requests as $req_id) {
+                $req_id = (int) $req_id;
+
+                // Validate that request exists
+                $check_stmt = $pdo->prepare("SELECT id FROM employee_requests WHERE id = ?");
+                $check_stmt->execute([$req_id]);
+                if (!$check_stmt->fetch()) {
+                    $bulk_errors[] = "Request ID $req_id not found";
+                    continue;
                 }
 
-                // Validate birth date
-                $birth_date = DateTime::createFromFormat('Y-m-d', $child['child_date_of_birth']);
-                if (!$birth_date || $birth_date->format('Y-m-d') !== $child['child_date_of_birth']) {
-                    $error = "Child " . ($index + 1) . ": Invalid birth date format";
-                    break;
-                }
-
-                if ($birth_date > new DateTime()) {
-                    $error = "Child " . ($index + 1) . ": Birth date cannot be in the future";
-                    break;
-                }
-
-                // Check if birth date is reasonable (not too old)
-                $minDate = new DateTime();
-                $minDate->sub(new DateInterval('P100Y')); // 100 years ago
-                if ($birth_date < $minDate) {
-                    $error = "Child " . ($index + 1) . ": Birth date seems too old";
-                    break;
+                try {
+                    switch ($bulk_action) {
+                        case 'mark_pending':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'pending', updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$req_id]);
+                            break;
+                        case 'mark_in_progress':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'in_progress', updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$req_id]);
+                            break;
+                        case 'mark_completed':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'completed', updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$req_id]);
+                            break;
+                        case 'assign_to_me':
+                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET assigned_to = ?, updated_at = NOW() WHERE id = ?");
+                            $bulk_stmt->execute([$_SESSION['user_id'], $req_id]);
+                            break;
+                    }
+                    $bulk_success_count++;
+                } catch (Exception $e) {
+                    $bulk_errors[] = "Failed to update request ID $req_id: " . $e->getMessage();
                 }
             }
-        }
 
-        if (!$error) {
-            try {
-                // Check if email already exists for other users
-                $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
-                $stmt->execute([$email, $_SESSION['user_id']]);
-                if ($stmt->fetch()) {
-                    $error = 'Email address already exists';
-                } else {
-                    // Check if NCIN already exists for other employees
-                    if (!empty($ncin)) {
-                        $stmt = $pdo->prepare("SELECT id FROM employee_profiles WHERE ncin = ? AND user_id != ?");
-                        $stmt->execute([$ncin, $_SESSION['user_id']]);
-                        if ($stmt->fetch()) {
-                            $error = 'NCIN already exists';
-                        }
-                    }
-
-                    if (!$error) {
-                        $pdo->beginTransaction();
-
-                        try {
-                            // Update users table
-                            $stmt = $pdo->prepare("UPDATE users SET email = ? WHERE id = ?");
-                            $stmt->execute([$email, $_SESSION['user_id']]);
-
-                            // Get employee profile ID
-                            $stmt = $pdo->prepare("SELECT id FROM employee_profiles WHERE user_id = ?");
-                            $stmt->execute([$_SESSION['user_id']]);
-                            $employee_profile_id = $stmt->fetchColumn();
-
-                            if (!$employee_profile_id) {
-                                throw new Exception("Employee profile not found");
-                            }
-
-                            // Remove selected children
-                            if (!empty($children_to_remove)) {
-                                $placeholders = implode(',', array_fill(0, count($children_to_remove), '?'));
-                                $stmt = $pdo->prepare("
-                                    DELETE FROM employee_children 
-                                    WHERE id IN ($placeholders) 
-                                    AND employee_profile_id = ?
-                                ");
-                                $params = array_merge($children_to_remove, [$employee_profile_id]);
-                                $stmt->execute($params);
-                            }
-
-                            // Process children data
-                            $existingChildIds = [];
-                            foreach ($children as $child) {
-                                $existingChildIds[] = $child['id'];
-                            }
-
-                            foreach ($children_data as $index => $child) {
-                                // Skip empty children
-                                $hasFirstName = !empty(trim($child['child_first_name'] ?? ''));
-                                $hasSecondName = !empty(trim($child['child_second_name'] ?? ''));
-                                $hasBirthDate = !empty(trim($child['child_date_of_birth'] ?? ''));
-
-                                if (!$hasFirstName && !$hasSecondName && !$hasBirthDate) {
-                                    continue; // Skip completely empty child entries
-                                }
-
-                                $childId = isset($child['id']) ? (int) $child['id'] : null;
-                                $isExistingChild = $childId && in_array($childId, $existingChildIds);
-                                $isMarkedForRemoval = $childId && in_array($childId, $children_to_remove);
-
-                                if ($isExistingChild && !$isMarkedForRemoval) {
-                                    // Update existing child
-                                    $stmt = $pdo->prepare("
-                                        UPDATE employee_children 
-                                        SET child_first_name = ?, child_second_name = ?, child_date_of_birth = ?
-                                        WHERE id = ? AND employee_profile_id = ?
-                                    ");
-                                    $stmt->execute([
-                                        sanitize($child['child_first_name']),
-                                        sanitize($child['child_second_name']),
-                                        $child['child_date_of_birth'],
-                                        $childId,
-                                        $employee_profile_id
-                                    ]);
-                                } elseif (!$isExistingChild && !$isMarkedForRemoval) {
-                                    // Add new child
-                                    $stmt = $pdo->prepare("
-                                        INSERT INTO employee_children (employee_profile_id, child_first_name, child_second_name, child_date_of_birth) 
-                                        VALUES (?, ?, ?, ?)
-                                    ");
-                                    $stmt->execute([
-                                        $employee_profile_id,
-                                        sanitize($child['child_first_name']),
-                                        sanitize($child['child_second_name']),
-                                        $child['child_date_of_birth']
-                                    ]);
-                                }
-                            }
-
-                            // Update children count in employee_profiles
-                            $children_count = updateChildrenCount($pdo, $_SESSION['user_id']);
-
-                            // Update employee_profiles table (including the updated children count)
-                            $stmt = $pdo->prepare("
-                                UPDATE employee_profiles 
-                                SET first_name = ?, last_name = ?, employee_id = ?, ncin = ?, cin_image_front = ?, cin_image_back = ?, 
-                                    cnss_first = ?, cnss_last = ?, department = ?, position = ?, phone = ?, address = ?, 
-                                    date_of_birth = ?, education = ?, has_driving_license = ?, driving_license_category = ?, 
-                                    driving_license_number = ?,driving_license_image = ?, gender = ?, factory = ?, civil_status = ?, hire_date = ?, 
-                                    salary = ?, profile_picture = ?, status = ?, dismissal_reason = ?, children = ?, updated_at = ?
-                                WHERE user_id = ?
-                            ");
-                            $stmt->execute([
-                                $first_name,
-                                $last_name,
-                                $employee_id,
-                                $ncin,
-                                $cin_image_front,
-                                $cin_image_back,
-                                $cnss_first,
-                                $cnss_last,
-                                $department,
-                                $position,
-                                $phone,
-                                $address,
-                                $date_of_birth,
-                                $education,
-                                $has_driving_license,
-                                $driving_license_category,
-                                $driving_license_number,
-                                $driving_license_image,
-                                $gender,
-                                $factory,
-                                $civil_status,
-                                $hire_date,
-                                $salary,
-                                $profile_picture,
-                                $status,
-                                $dismissal_reason,
-                                $children_count, // Updated children count
-                                $updated_at,
-                                $_SESSION['user_id']
-                            ]);
-
-                            $pdo->commit();
-                            $success = 'Profile updated successfully! Children count: ' . $children_count;
-
-                            // Refresh employee data
-                            $stmt = $pdo->prepare("
-                                SELECT u.*, ep.* 
-                                FROM users u 
-                                LEFT JOIN employee_profiles ep ON u.id = ep.user_id 
-                                WHERE u.id = ?
-                            ");
-                            $stmt->execute([$_SESSION['user_id']]);
-                            $employee = $stmt->fetch();
-
-                            // Refresh children data
-                            $stmt = $pdo->prepare("
-                                SELECT ec.* 
-                                FROM employee_children ec 
-                                JOIN employee_profiles ep ON ec.employee_profile_id = ep.id 
-                                WHERE ep.user_id = ?
-                                ORDER BY ec.id
-                            ");
-                            $stmt->execute([$_SESSION['user_id']]);
-                            $children = $stmt->fetchAll();
-
-                        } catch (Exception $e) {
-                            $pdo->rollBack();
-                            throw $e;
-                        }
-                    }
-                }
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                $error = 'Update failed: ' . $e->getMessage();
+            if (empty($bulk_errors)) {
+                $pdo->commit();
+                $success = "Bulk action completed successfully! Updated $bulk_success_count request(s).";
+            } else {
+                $pdo->rollBack();
+                $error = "Bulk action partially failed. Errors: " . implode(', ', $bulk_errors);
             }
+
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error = 'Bulk action failed: ' . htmlspecialchars($e->getMessage());
+            error_log('Bulk action error: ' . $e->getMessage());
         }
     }
 }
 
-// Helper function to check if file is an image
-function isImage($filename) {
-    $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
-    $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-    return in_array($extension, $imageExtensions);
-}
+// Get available users for assignment - CORRECTED SQL
+$users_stmt = $pdo->prepare("
+    SELECT u.id, u.username, u.email 
+    FROM users u 
+    INNER JOIN employee_profiles ep ON ep.user_id = u.id
+    WHERE u.role IN ('admin', 'employee') AND ep.status = 'active'
+    ORDER BY u.username
+");
+$users_stmt->execute();
+$available_users = $users_stmt->fetchAll();
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -507,11 +550,11 @@ function isImage($filename) {
                     <span class="admin-badge">ADMIN</span>
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                     <a href="employees_listing.php" class="nav-link">Employees</a>
+                    <a href="admin_request.php" class="nav-link">Requests</a>
                 <?php else: ?>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
+                    <a href="emp_request.php" class="nav-link">Requests</a>
                 <?php endif; ?>
                 <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

@@ -3,28 +3,6 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
-// Add missing CSRF functions
-function generateCSRFToken()
-{
-    if (!isset($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-    return $_SESSION['csrf_token'];
-}
-
-function verifyCSRFToken($token)
-{
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
-}
-
-// Add missing sanitize function if not in config.php
-if (!function_exists('sanitize')) {
-    function sanitize($input)
-    {
-        return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
-    }
-}
-
 $error = '';
 $success = '';
 $filter_status = $_GET['status'] ?? 'all';
@@ -60,7 +38,7 @@ if (!empty($search_query)) {
 
 $where_clause = implode(' AND ', $where_conditions);
 
-// Validate sort parameters - SECURE VERSION
+// Validate sort parameters
 $valid_sort_columns = ['created_at', 'priority', 'status', 'subject', 'first_name', 'last_name'];
 $sort_by = in_array($sort_by, $valid_sort_columns) ? $sort_by : 'created_at';
 $sort_order = strtoupper($sort_order) === 'ASC' ? 'ASC' : 'DESC';
@@ -94,7 +72,7 @@ $order_columns = [
 $order_column = isset($order_columns[$sort_by]) ? $order_columns[$sort_by] : 'er.created_at';
 $order_by_clause = "$order_column $sort_order";
 
-// Fetch filtered and sorted requests - SECURE VERSION
+// Fetch filtered and sorted requests
 $stmt = $pdo->prepare("
     SELECT er.*, ep.first_name, ep.last_name, u.email,
            CASE 
@@ -109,15 +87,13 @@ $stmt = $pdo->prepare("
     JOIN users u ON ep.user_id = u.id
     WHERE $where_clause
     ORDER BY $order_by_clause
-    LIMIT ? OFFSET ?
+    LIMIT $per_page OFFSET $offset
 ");
 
-// Add pagination parameters to the params array
-$query_params = array_merge($params, [$per_page, $offset]);
-$stmt->execute($query_params);
+$stmt->execute($params);
 $requests = $stmt->fetchAll();
 
-// Fetch admin notifications with better filtering
+// Fetch admin notifications
 $stmt = $pdo->prepare("
     SELECT n.*, COUNT(n.id) as notification_count
     FROM notifications n
@@ -145,17 +121,16 @@ $stats_stmt = $pdo->prepare("
 $stats_stmt->execute();
 $stats = $stats_stmt->fetch();
 
-// Enhanced request response handling with better error handling
+// Handle request response
 if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_token'])) {
     $request_id = (int) $_POST['request_id'];
     $response = trim(sanitize($_POST['admin_response']));
     $status = sanitize($_POST['status']);
-    $assign_to = !empty($_POST['assign_to']) ? (int) $_POST['assign_to'] : null;
     $priority = sanitize($_POST['priority']);
     $is_internal_note = isset($_POST['is_internal_note']) ? 1 : 0;
     $follow_up_date = !empty($_POST['follow_up_date']) ? $_POST['follow_up_date'] : null;
 
-    // Enhanced validation
+    // Validation
     $validation_errors = [];
 
     if (empty($response)) {
@@ -174,15 +149,6 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
         $validation_errors[] = 'Invalid priority selected';
     }
 
-    // Validate assignment
-    if ($assign_to) {
-        $assign_stmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role IN ('admin', 'manager')");
-        $assign_stmt->execute([$assign_to]);
-        if (!$assign_stmt->fetch()) {
-            $validation_errors[] = 'Invalid user selected for assignment';
-        }
-    }
-
     // Validate follow-up date
     if ($follow_up_date) {
         $follow_up_timestamp = strtotime($follow_up_date);
@@ -191,7 +157,7 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
         }
     }
 
-    // Check if request exists and get current data
+    // Check if request exists
     $current_request_stmt = $pdo->prepare("
         SELECT er.*, ep.user_id as employee_user_id 
         FROM employee_requests er 
@@ -213,7 +179,7 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
             $update_stmt = $pdo->prepare("
                 UPDATE employee_requests
                 SET status = ?, admin_response = ?, admin_id = ?, priority = ?, 
-                    assigned_to = ?, follow_up_date = ?, responded_at = NOW(), updated_at = NOW()
+                    follow_up_date = ?, responded_at = NOW(), updated_at = NOW()
                 WHERE id = ?
             ");
             $update_result = $update_stmt->execute([
@@ -221,7 +187,6 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
                 $response,
                 $_SESSION['user_id'],
                 $priority,
-                $assign_to,
                 $follow_up_date,
                 $request_id
             ]);
@@ -245,21 +210,6 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
                 ]);
             }
 
-            // Record assignment change if assigned
-            if ($assign_to && $current_request['assigned_to'] != $assign_to) {
-                $assignment_stmt = $pdo->prepare("
-                    INSERT INTO request_assignments (request_id, assigned_from, assigned_to, assigned_by, notes)
-                    VALUES (?, ?, ?, ?, ?)
-                ");
-                $assignment_stmt->execute([
-                    $request_id,
-                    $current_request['assigned_to'],
-                    $assign_to,
-                    $_SESSION['user_id'],
-                    "Assigned via admin response"
-                ]);
-            }
-
             // Add response as comment
             $comment_stmt = $pdo->prepare("
                 INSERT INTO request_comments (request_id, user_id, comment, is_internal)
@@ -272,15 +222,6 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
                 $notification_title = "Request Update - " . ucfirst($status);
                 $notification_message = "Your request has been updated with status: " . ucfirst($status);
 
-                if ($assign_to) {
-                    $assigned_user_stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
-                    $assigned_user_stmt->execute([$assign_to]);
-                    $assigned_user = $assigned_user_stmt->fetch();
-                    if ($assigned_user) {
-                        $notification_message .= " and assigned to " . htmlspecialchars($assigned_user['username']);
-                    }
-                }
-
                 $employee_notification_stmt = $pdo->prepare("
                     INSERT INTO notifications (user_id, type, title, message, related_id)
                     VALUES (?, 'request_responded', ?, ?, ?)
@@ -289,20 +230,6 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
                     $current_request['employee_user_id'],
                     $notification_title,
                     $notification_message,
-                    $request_id
-                ]);
-            }
-
-            // Create notification for assigned user if different from current admin
-            if ($assign_to && $assign_to != $_SESSION['user_id']) {
-                $assign_notification_stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, title, message, related_id)
-                    VALUES (?, 'request_assigned', ?, ?, ?)
-                ");
-                $assign_notification_stmt->execute([
-                    $assign_to,
-                    "New Request Assignment",
-                    "You have been assigned to handle a " . htmlspecialchars($priority) . " priority request",
                     $request_id
                 ]);
             }
@@ -322,47 +249,47 @@ if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_t
             }
 
             $pdo->commit();
-            $success = 'Response submitted successfully! Request updated with ' . ucfirst($status) . ' status.';
 
-            // Refresh requests data with the same secure query
-            $stmt = $pdo->prepare("
-                SELECT er.*, ep.first_name, ep.last_name, u.email,
-                       CASE 
-                           WHEN er.priority = 'urgent' THEN 1
-                           WHEN er.priority = 'high' THEN 2
-                           WHEN er.priority = 'normal' THEN 3
-                           WHEN er.priority = 'low' THEN 4
-                           ELSE 5
-                       END as priority_order
-                FROM employee_requests er
-                JOIN employee_profiles ep ON er.employee_id = ep.id
-                JOIN users u ON ep.user_id = u.id
-                WHERE $where_clause
-                ORDER BY $order_by_clause
-                LIMIT ? OFFSET ?
-            ");
-            $stmt->execute($query_params);
-            $requests = $stmt->fetchAll();
+            // Redirect to prevent resubmission
+            $redirect_params = array_merge($_GET, ['success' => 'Response submitted successfully! Request updated with ' . ucfirst($status) . ' status.']);
+            $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+            header('Location: ' . $redirect_url);
+            exit();
 
         } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Failed to submit response: ' . htmlspecialchars($e->getMessage());
-            error_log('Admin request response error: ' . $e->getMessage());
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            // Redirect with error message
+            $redirect_params = array_merge($_GET, ['error' => 'Failed to submit response: ' . $e->getMessage()]);
+            $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+            header('Location: ' . $redirect_url);
+            exit();
         }
     } else {
-        $error = implode('<br>', array_map('htmlspecialchars', $validation_errors));
+        // Redirect with validation errors
+        $redirect_params = array_merge($_GET, ['error' => implode(' | ', $validation_errors)]);
+        $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+        header('Location: ' . $redirect_url);
+        exit();
     }
 }
 
-// Handle bulk actions with improved validation
+// Handle bulk actions
 if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token'])) {
     $bulk_action = $_POST['bulk_action'];
     $selected_requests = $_POST['selected_requests'] ?? [];
 
     if (empty($selected_requests)) {
-        $error = 'No requests selected for bulk action';
-    } elseif (!in_array($bulk_action, ['mark_pending', 'mark_in_progress', 'mark_completed', 'assign_to_me'])) {
-        $error = 'Invalid bulk action';
+        $redirect_params = array_merge($_GET, ['error' => 'No requests selected for bulk action']);
+        $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+        header('Location: ' . $redirect_url);
+        exit();
+    } elseif (!in_array($bulk_action, ['mark_pending', 'mark_in_progress', 'mark_completed'])) {
+        $redirect_params = array_merge($_GET, ['error' => 'Invalid bulk action']);
+        $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+        header('Location: ' . $redirect_url);
+        exit();
     } else {
         try {
             $pdo->beginTransaction();
@@ -394,43 +321,41 @@ if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token
                             $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'completed', updated_at = NOW() WHERE id = ?");
                             $bulk_stmt->execute([$req_id]);
                             break;
-                        case 'assign_to_me':
-                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET assigned_to = ?, updated_at = NOW() WHERE id = ?");
-                            $bulk_stmt->execute([$_SESSION['user_id'], $req_id]);
-                            break;
                     }
                     $bulk_success_count++;
                 } catch (Exception $e) {
                     $bulk_errors[] = "Failed to update request ID $req_id: " . $e->getMessage();
                 }
             }
-
             if (empty($bulk_errors)) {
                 $pdo->commit();
-                $success = "Bulk action completed successfully! Updated $bulk_success_count request(s).";
+                // Redirect to prevent resubmission
+                $redirect_params = array_merge($_GET, ['success' => "Bulk action completed successfully! Updated $bulk_success_count request(s)."]);
+                $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+                header('Location: ' . $redirect_url);
+                exit();
             } else {
-                $pdo->rollBack();
-                $error = "Bulk action partially failed. Errors: " . implode(', ', $bulk_errors);
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                // Redirect with error message
+                $redirect_params = array_merge($_GET, ['error' => "Bulk action partially failed. Errors: " . implode(', ', $bulk_errors)]);
+                $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+                header('Location: ' . $redirect_url);
+                exit();
             }
-
         } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Bulk action failed: ' . htmlspecialchars($e->getMessage());
-            error_log('Bulk action error: ' . $e->getMessage());
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            // Redirect with error message
+            $redirect_params = array_merge($_GET, ['error' => 'Bulk action failed: ' . $e->getMessage()]);
+            $redirect_url = 'admin_request.php?' . http_build_query($redirect_params);
+            header('Location: ' . $redirect_url);
+            exit();
         }
     }
 }
-
-// Get available users for assignment - CORRECTED SQL
-$users_stmt = $pdo->prepare("
-    SELECT u.id, u.username, u.email 
-    FROM users u 
-    INNER JOIN employee_profiles ep ON ep.user_id = u.id
-    WHERE u.role IN ('admin', 'employee') AND ep.status = 'active'
-    ORDER BY u.username
-");
-$users_stmt->execute();
-$available_users = $users_stmt->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -553,21 +478,6 @@ $available_users = $users_stmt->fetchAll();
 
         .sort-header:hover {
             background: #f8f9fa;
-        }
-
-        .advanced-response-form {
-            display: none;
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-        }
-
-        .toggle-advanced {
-            color: #007bff;
-            cursor: pointer;
-            text-decoration: underline;
-            font-size: 12px;
         }
 
         .status-badge {
@@ -826,7 +736,6 @@ $available_users = $users_stmt->fetchAll();
                         <option value="mark_pending">Mark as Pending</option>
                         <option value="mark_in_progress">Mark as In Progress</option>
                         <option value="mark_completed">Mark as Completed</option>
-                        <option value="assign_to_me">Assign to Me</option>
                     </select>
                     <button type="submit" class="btn btn-small" onclick="return confirmBulkAction()">Apply</button>
                     <span id="selectedCount" style="font-size: 12px; color: #666;">0 selected</span>
@@ -864,15 +773,6 @@ $available_users = $users_stmt->fetchAll();
                             <?php if ($request['responded_at']): ?>
                                 <span><strong>Last Response:</strong>
                                     <?php echo date('M j, Y g:i A', strtotime($request['responded_at'])); ?></span>
-                            <?php endif; ?>
-                            <?php if ($request['assigned_to']): ?>
-                                <?php
-                                $assigned_stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
-                                $assigned_stmt->execute([$request['assigned_to']]);
-                                $assigned_user = $assigned_stmt->fetch();
-                                ?>
-                                <span><strong>Assigned to:</strong>
-                                    <?php echo htmlspecialchars($assigned_user['username']); ?></span>
                             <?php endif; ?>
                             <?php if ($request['follow_up_date']): ?>
                                 <span><strong>Follow-up:</strong>
@@ -933,17 +833,6 @@ $available_users = $users_stmt->fetchAll();
                                 </div>
 
                                 <div class="form-grid">
-                                    <div class="form-group">
-                                        <label>Assign To</label>
-                                        <select name="assign_to">
-                                            <option value="">None</option>
-                                            <?php foreach ($available_users as $user): ?>
-                                                <option value="<?php echo $user['id']; ?>" <?php echo $request['assigned_to'] == $user['id'] ? 'selected' : ''; ?>>
-                                                    <?php echo htmlspecialchars($user['username'] . ' (' . $user['email'] . ')'); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
                                     <div class="form-group">
                                         <label>Follow-up Date</label>
                                         <input type="date" name="follow_up_date"

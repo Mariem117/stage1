@@ -8,6 +8,9 @@ $success = '';
 if (isset($_GET['success'])) {
     $success = 'Request submitted successfully!';
 }
+if (isset($_GET['error'])) {
+    $error = htmlspecialchars($_GET['error']);
+}
 
 // Get employee profile
 $stmt = $pdo->prepare("
@@ -24,6 +27,12 @@ if (!$employee) {
     exit();
 }
 
+// Prevent redirect loops
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['submit_request'])) {
+    header('Location: emp_request.php');
+    exit();
+}
+
 // Handle request submission
 if ($_POST && isset($_POST['submit_request']) && verifyCSRFToken($_POST['csrf_token'])) {
     $subject = sanitize($_POST['subject']);
@@ -32,9 +41,11 @@ if ($_POST && isset($_POST['submit_request']) && verifyCSRFToken($_POST['csrf_to
 
     // Validation
     if (empty($subject) || empty($message)) {
-        $error = 'Please fill in all required fields';
+        header('Location: emp_request.php?error=' . urlencode('Please fill in all required fields'));
+        exit();
     } elseif (!in_array($priority, ['low', 'medium', 'high'])) {
-        $error = 'Invalid priority selected';
+        header('Location: emp_request.php?error=' . urlencode('Invalid priority selected'));
+        exit();
     } else {
         try {
             // Insert request first (outside transaction)
@@ -92,11 +103,10 @@ if ($_POST && isset($_POST['submit_request']) && verifyCSRFToken($_POST['csrf_to
     }
 }
 
-// Fetch user's requests
+// Fetch user's requests - Removed admin_email reference
 $stmt = $pdo->prepare("
-    SELECT er.*, u.email as admin_email
+    SELECT er.*
     FROM employee_requests er
-    LEFT JOIN users u ON er.admin_id = u.id
     WHERE er.employee_id = ?
     ORDER BY er.created_at DESC
 ");

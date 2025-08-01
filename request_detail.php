@@ -10,6 +10,14 @@ $attachments = [];
 $status_history = [];
 $assignment_history = [];
 
+// Handle URL parameters for success/error messages
+if (isset($_GET['success'])) {
+    $success = htmlspecialchars($_GET['success']);
+}
+if (isset($_GET['error'])) {
+    $error = htmlspecialchars($_GET['error']);
+}
+
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     header('Location: emp_request.php');
     exit();
@@ -90,23 +98,11 @@ if ($_POST && isset($_POST['submit_comment']) && verifyCSRFToken($_POST['csrf_to
         $error = 'Comment cannot be empty';
     } else {
         try {
-            $stmt = $pdo->prepare("
-                INSERT INTO request_comments (request_id, user_id, comment, is_internal)
-                VALUES (?, ?, ?, ?)
-            ");
             $stmt->execute([$request_id, $_SESSION['user_id'], $comment, $is_internal]);
-            $success = 'Comment added successfully';
-
-            // Refresh comments
-            $stmt = $pdo->prepare("
-                SELECT rc.*, u.username, u.role
-                FROM request_comments rc
-                JOIN users u ON rc.user_id = u.id
-                WHERE rc.request_id = ? AND (rc.is_internal = 0 OR ?)
-                ORDER BY rc.created_at ASC
-            ");
-            $stmt->execute([$request_id, $is_admin]);
-            $comments = $stmt->fetchAll();
+            
+        // FIXED: Redirect to prevent resubmission
+        header('Location: request_detail.php?id=' . $request_id . '&success=Comment added successfully');
+        exit();
         } catch (Exception $e) {
             $error = 'Failed to add comment: ' . $e->getMessage();
         }
@@ -147,18 +143,10 @@ if ($_POST && isset($_POST['upload_attachment']) && verifyCSRFToken($_POST['csrf
                         $file['type'],
                         $file_path
                     ]);
-                    $success = 'File uploaded successfully';
-
-                    // Refresh attachments
-                    $stmt = $pdo->prepare("
-                        SELECT ra.*, u.username
-                        FROM request_attachments ra
-                        JOIN users u ON ra.user_id = u.id
-                        WHERE ra.request_id = ?
-                        ORDER BY ra.uploaded_at ASC
-                    ");
-                    $stmt->execute([$request_id]);
-                    $attachments = $stmt->fetchAll();
+                    
+                // FIXED: Redirect to prevent resubmission
+                header('Location: request_detail.php?id=' . $request_id . '&success=File uploaded successfully');
+                exit();
                 } catch (Exception $e) {
                     $error = 'Failed to save attachment: ' . $e->getMessage();
                     unlink($file_path);
