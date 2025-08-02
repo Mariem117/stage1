@@ -391,7 +391,7 @@ if ($_POST && isset($_POST['upload_attachment']) && verifyCSRFToken($_POST['csrf
             <!-- Assignment History -->
             <div class="assignment-history">
                 <div class="section-header">
-                    <div class the-section-icon">👥</div>
+                    <div class ="the-section-icon">👥</div>
                     <h3>Assignment History</h3>
                 </div>
                 <?php if (empty($assignment_history)): ?>

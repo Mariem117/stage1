@@ -66,12 +66,18 @@ $stmt = $pdo->prepare("
            ep.ncin, ep.cin_image_front, ep.cin_image_back, ep.cnss_first, ep.cnss_last,
            ep.department, ep.position, ep.phone, ep.address,
            ep.date_of_birth, ep.education, ep.has_driving_license,
-           ep.driving_license_category, ep.driving_license_number , ep.driving_license_image,
-           ep.gender, ep.factory, ep.civil_status, ep.children, ep.hire_date, 
-           ep.salary, ep.profile_picture, ep.status, ep.dismissal_reason,
+           ep.driving_license_category, ep.driving_license_number, ep.driving_license_image,
+           ep.gender, ep.factory, ep.civil_status, 
+           COALESCE(children_count.count, 0) as children,
+           ep.hire_date, ep.salary, ep.profile_picture, ep.status, ep.dismissal_reason,
            ep.created_at, ep.updated_at
     FROM users u 
     LEFT JOIN employee_profiles ep ON u.id = ep.user_id
+    LEFT JOIN (
+        SELECT employee_profile_id, COUNT(*) as count 
+        FROM employee_children 
+        GROUP BY employee_profile_id
+    ) children_count ON ep.id = children_count.employee_profile_id
     WHERE u.role = 'employee'
     ORDER BY ep.last_name, ep.first_name
 ");

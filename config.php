@@ -124,6 +124,15 @@ function handleFileUpload($file, $uploadDir = 'uploads/')
     }
 }
 
+function isImage($filename)
+{
+    if (!$filename || !file_exists($filename)) {
+        return false;
+    }
+    $imageInfo = @getimagesize($filename);
+    return $imageInfo !== false;
+}
+
 // Function to resize images (optional - requires GD extension)
 function resizeImage($filePath, $maxWidth = 800, $maxHeight = 600)
 {

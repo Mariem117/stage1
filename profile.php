@@ -1,421 +1,272 @@
 <?php
 require_once 'config.php';
-requireLogin();
-requireAdmin();
 
-// Add missing sanitize function if not in config.php
-if (!function_exists('sanitize')) {
-    function sanitize($input)
-    {
-        return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
-    }
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit();
 }
 
 $error = '';
 $success = '';
-$filter_status = $_GET['status'] ?? 'all';
-$filter_priority = $_GET['priority'] ?? 'all';
-$search_query = $_GET['search'] ?? '';
-$sort_by = $_GET['sort'] ?? 'created_at';
-$sort_order = $_GET['order'] ?? 'DESC';
 
-// Pagination
-$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$per_page = 10;
-$offset = ($page - 1) * $per_page;
-
-// Build WHERE clause for filtering
-$where_conditions = ['1=1'];
-$params = [];
-
-if ($filter_status !== 'all') {
-    $where_conditions[] = 'er.status = ?';
-    $params[] = $filter_status;
-}
-
-if ($filter_priority !== 'all') {
-    $where_conditions[] = 'er.priority = ?';
-    $params[] = $filter_priority;
-}
-
-if (!empty($search_query)) {
-    $where_conditions[] = '(er.subject LIKE ? OR er.message LIKE ? OR ep.first_name LIKE ? OR ep.last_name LIKE ? OR u.email LIKE ?)';
-    $search_param = '%' . $search_query . '%';
-    $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param, $search_param]);
-}
-
-$where_clause = implode(' AND ', $where_conditions);
-
-// Validate sort parameters - SECURE VERSION
-$valid_sort_columns = ['created_at', 'priority', 'status', 'subject', 'first_name', 'last_name'];
-$sort_by = in_array($sort_by, $valid_sort_columns) ? $sort_by : 'created_at';
-$sort_order = strtoupper($sort_order) === 'ASC' ? 'ASC' : 'DESC';
-
-// Get total count for pagination
-$count_stmt = $pdo->prepare("
-    SELECT COUNT(*) as total
-    FROM employee_requests er
-    JOIN employee_profiles ep ON er.employee_id = ep.id
-    JOIN users u ON ep.user_id = u.id
-    WHERE $where_clause
-");
-$count_stmt->execute($params);
-$total_requests = $count_stmt->fetch()['total'];
-$total_pages = ceil($total_requests / $per_page);
-
-// Ensure integer values for pagination
-$per_page = (int) $per_page;
-$offset = (int) $offset;
-
-// Secure ORDER BY mapping
-$order_columns = [
-    'created_at' => 'er.created_at',
-    'priority' => 'priority_order',
-    'status' => 'er.status',
-    'subject' => 'er.subject',
-    'first_name' => 'ep.first_name',
-    'last_name' => 'ep.last_name'
-];
-
-$order_column = isset($order_columns[$sort_by]) ? $order_columns[$sort_by] : 'er.created_at';
-$order_by_clause = "$order_column $sort_order";
-
-// Fetch filtered and sorted requests - SECURE VERSION
-$stmt = $pdo->prepare("
-    SELECT er.*, ep.first_name, ep.last_name, u.email,
-           CASE 
-               WHEN er.priority = 'urgent' THEN 1
-               WHEN er.priority = 'high' THEN 2
-               WHEN er.priority = 'normal' THEN 3
-               WHEN er.priority = 'low' THEN 4
-               ELSE 5
-           END as priority_order
-    FROM employee_requests er
-    JOIN employee_profiles ep ON er.employee_id = ep.id
-    JOIN users u ON ep.user_id = u.id
-    WHERE $where_clause
-    ORDER BY $order_by_clause
-    LIMIT $per_page OFFSET $offset
-");
-
-// Execute with only the filter parameters
-$stmt->execute($params);
-$requests = $stmt->fetchAll();
-
-// Fetch admin notifications with better filtering
-$stmt = $pdo->prepare("
-    SELECT n.*, COUNT(n.id) as notification_count
-    FROM notifications n
-    WHERE n.user_id = ? AND n.type IN ('new_request', 'request_updated', 'urgent_request')
-    GROUP BY n.type, n.is_read
-    ORDER BY n.created_at DESC
-    LIMIT 10
-");
-$stmt->execute([$_SESSION['user_id']]);
-$notifications = $stmt->fetchAll();
-
-// Get request statistics
-$stats_stmt = $pdo->prepare("
-    SELECT 
-        COUNT(*) as total_requests,
-        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_requests,
-        COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress_requests,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_requests,
-        COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_requests,
-        COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_requests,
-        COUNT(CASE WHEN priority = 'high' THEN 1 END) as high_priority_requests,
-        COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as recent_requests
-    FROM employee_requests
-");
-$stats_stmt->execute();
-$stats = $stats_stmt->fetch();
-
-// Enhanced request response handling with better error handling
-if ($_POST && isset($_POST['respond_request']) && verifyCSRFToken($_POST['csrf_token'])) {
-    $request_id = (int) $_POST['request_id'];
-    $response = trim(sanitize($_POST['admin_response']));
-    $status = sanitize($_POST['status']);
-    $assign_to = !empty($_POST['assign_to']) ? (int) $_POST['assign_to'] : null;
-    $priority = sanitize($_POST['priority']);
-    $is_internal_note = isset($_POST['is_internal_note']) ? 1 : 0;
-    $follow_up_date = !empty($_POST['follow_up_date']) ? $_POST['follow_up_date'] : null;
-
-    // Enhanced validation
-    $validation_errors = [];
-
-    if (empty($response)) {
-        $validation_errors[] = 'Response message is required';
-    } elseif (strlen($response) < 10) {
-        $validation_errors[] = 'Response must be at least 10 characters long';
-    } elseif (strlen($response) > 2000) {
-        $validation_errors[] = 'Response cannot exceed 2000 characters';
-    }
-
-    if (!in_array($status, ['pending', 'in_progress', 'completed', 'rejected', 'on_hold'])) {
-        $validation_errors[] = 'Invalid status selected';
-    }
-
-    if (!in_array($priority, ['low', 'normal', 'high', 'urgent'])) {
-        $validation_errors[] = 'Invalid priority selected';
-    }
-
-    // Validate assignment
-    if ($assign_to) {
-        $assign_stmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role IN ('admin', 'manager')");
-        $assign_stmt->execute([$assign_to]);
-        if (!$assign_stmt->fetch()) {
-            $validation_errors[] = 'Invalid user selected for assignment';
-        }
-    }
-
-    // Validate follow-up date
-    if ($follow_up_date) {
-        $follow_up_timestamp = strtotime($follow_up_date);
-        if (!$follow_up_timestamp || $follow_up_timestamp <= time()) {
-            $validation_errors[] = 'Follow-up date must be in the future';
-        }
-    }
-
-    // Check if request exists and get current data
-    $current_request_stmt = $pdo->prepare("
-        SELECT er.*, ep.user_id as employee_user_id 
-        FROM employee_requests er 
-        JOIN employee_profiles ep ON er.employee_id = ep.id 
-        WHERE er.id = ?
+// Get current user's employee profile
+try {
+    $stmt = $pdo->prepare("
+        SELECT u.*, ep.* 
+        FROM users u 
+        LEFT JOIN employee_profiles ep ON u.id = ep.user_id 
+        WHERE u.id = ?
     ");
-    $current_request_stmt->execute([$request_id]);
-    $current_request = $current_request_stmt->fetch();
+    $stmt->execute([$_SESSION['user_id']]);
+    $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$current_request) {
-        $validation_errors[] = 'Request not found';
+    if (!$employee) {
+        $error = "Employee profile not found. Please contact administrator.";
+        // Create default employee array
+        $employee = [
+            'id' => null,
+            'username' => '',
+            'email' => '',
+            'first_name' => '',
+            'last_name' => '',
+            'employee_id' => '',
+            'phone' => '',
+            'date_of_birth' => '',
+            'ncin' => '',
+            'gender' => 'male',
+            'factory' => 1,
+            'department' => '',
+            'position' => '',
+            'address' => '',
+            'hire_date' => '',
+            'civil_status' => 'single',
+            'profile_picture' => null,
+            'cin_image' => null,
+            'cin_image_front' => null,
+            'cin_image_back' => null,
+            'driving_license_image' => null,
+            'has_driving_license' => 0,
+            'driving_license_category' => '',
+            'driving_license_number' => '',
+            'cnss_first' => '',
+            'cnss_last' => '',
+            'education' => ''
+        ];
     }
+} catch (Exception $e) {
+    $error = "Database error: " . $e->getMessage();
+    error_log("Profile database error: " . $e->getMessage());
+    $employee = [];
+}
 
-    if (empty($validation_errors)) {
-        try {
-            $pdo->beginTransaction();
+// Get children data - using correct column name from your database
+$children = [];
+if (!empty($employee['id'])) {
+    try {
+        $children_stmt = $pdo->prepare("SELECT * FROM employee_children WHERE employee_profile_id = ? OR employee_id = ?");
+        $children_stmt->execute([$employee['id'], $employee['id']]);
+        $children = $children_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {
+        error_log("Children query error: " . $e->getMessage());
+        $children = [];
+    }
+}
 
-            // Update request
-            $update_stmt = $pdo->prepare("
-                UPDATE employee_requests
-                SET status = ?, admin_response = ?, admin_id = ?, priority = ?, 
-                    assigned_to = ?, follow_up_date = ?, responded_at = NOW(), updated_at = NOW()
+// Handle profile update
+if ($_POST && isset($_POST['update_profile']) && verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    try {
+        $pdo->beginTransaction();
+
+        // Update users table
+        $user_stmt = $pdo->prepare("UPDATE users SET email = ? WHERE id = ?");
+        $user_stmt->execute([
+            sanitize($_POST['email']),
+            $_SESSION['user_id']
+        ]);
+
+        // Update or insert employee profile
+        if ($employee['id']) {
+            // Update existing profile
+            $profile_stmt = $pdo->prepare("
+                UPDATE employee_profiles SET 
+                    first_name = ?, last_name = ?, phone = ?, date_of_birth = ?, 
+                    ncin = ?, gender = ?, factory = ?, department = ?, position = ?, 
+                    address = ?, civil_status = ?, cnss_first = ?, cnss_last = ?, 
+                    education = ?, has_driving_license = ?, driving_license_category = ?, 
+                    driving_license_number = ?
                 WHERE id = ?
             ");
-            $update_result = $update_stmt->execute([
-                $status,
-                $response,
-                $_SESSION['user_id'],
-                $priority,
-                $assign_to,
-                $follow_up_date,
-                $request_id
+            $profile_stmt->execute([
+                sanitize($_POST['first_name']),
+                sanitize($_POST['last_name']),
+                sanitize($_POST['phone']),
+                $_POST['date_of_birth'] ?: null,
+                sanitize($_POST['ncin']),
+                sanitize($_POST['gender']),
+                (int) $_POST['factory'],
+                sanitize($_POST['department']),
+                sanitize($_POST['position']),
+                sanitize($_POST['address']),
+                sanitize($_POST['civil_status']),
+                sanitize($_POST['cnss_first']),
+                sanitize($_POST['cnss_last']),
+                sanitize($_POST['education']),
+                isset($_POST['has_driving_license']) ? 1 : 0,
+                sanitize($_POST['driving_license_category']),
+                sanitize($_POST['driving_license_number']),
+                $employee['id']
             ]);
-
-            if (!$update_result) {
-                throw new Exception('Failed to update request');
-            }
-
-            // Record status change in history if status changed
-            if ($current_request['status'] !== $status) {
-                $status_history_stmt = $pdo->prepare("
-                    INSERT INTO request_status_history (request_id, old_status, new_status, changed_by, notes)
-                    VALUES (?, ?, ?, ?, ?)
-                ");
-                $status_history_stmt->execute([
-                    $request_id,
-                    $current_request['status'],
-                    $status,
-                    $_SESSION['user_id'],
-                    "Status changed via admin response. Priority: $priority"
-                ]);
-            }
-
-            // Record assignment change if assigned
-            if ($assign_to && $current_request['assigned_to'] != $assign_to) {
-                $assignment_stmt = $pdo->prepare("
-                    INSERT INTO request_assignments (request_id, assigned_from, assigned_to, assigned_by, notes)
-                    VALUES (?, ?, ?, ?, ?)
-                ");
-                $assignment_stmt->execute([
-                    $request_id,
-                    $current_request['assigned_to'],
-                    $assign_to,
-                    $_SESSION['user_id'],
-                    "Assigned via admin response"
-                ]);
-            }
-
-            // Add response as comment
-            $comment_stmt = $pdo->prepare("
-                INSERT INTO request_comments (request_id, user_id, comment, is_internal)
-                VALUES (?, ?, ?, ?)
+        } else {
+            // Insert new profile
+            $profile_stmt = $pdo->prepare("
+                INSERT INTO employee_profiles (
+                    user_id, first_name, last_name, phone, date_of_birth, ncin, 
+                    gender, factory, department, position, address, civil_status, 
+                    cnss_first, cnss_last, education, has_driving_license, 
+                    driving_license_category, driving_license_number
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $comment_stmt->execute([$request_id, $_SESSION['user_id'], $response, $is_internal_note]);
+            $profile_stmt->execute([
+                $_SESSION['user_id'],
+                sanitize($_POST['first_name']),
+                sanitize($_POST['last_name']),
+                sanitize($_POST['phone']),
+                $_POST['date_of_birth'] ?: null,
+                sanitize($_POST['ncin']),
+                sanitize($_POST['gender']),
+                (int) $_POST['factory'],
+                sanitize($_POST['department']),
+                sanitize($_POST['position']),
+                sanitize($_POST['address']),
+                sanitize($_POST['civil_status']),
+                sanitize($_POST['cnss_first']),
+                sanitize($_POST['cnss_last']),
+                sanitize($_POST['education']),
+                isset($_POST['has_driving_license']) ? 1 : 0,
+                sanitize($_POST['driving_license_category']),
+                sanitize($_POST['driving_license_number'])
+            ]);
+            $employee_profile_id = $pdo->lastInsertId();
+        }
 
-            // Create notification for employee (unless it's an internal note)
-            if (!$is_internal_note) {
-                $notification_title = "Request Update - " . ucfirst($status);
-                $notification_message = "Your request has been updated with status: " . ucfirst($status);
+        // Handle children updates
+        if (isset($_POST['children']) && is_array($_POST['children'])) {
+            $employee_profile_id = $employee['id'] ?: $pdo->lastInsertId();
 
-                if ($assign_to) {
-                    $assigned_user_stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
-                    $assigned_user_stmt->execute([$assign_to]);
-                    $assigned_user = $assigned_user_stmt->fetch();
-                    if ($assigned_user) {
-                        $notification_message .= " and assigned to " . htmlspecialchars($assigned_user['username']);
+            foreach ($_POST['children'] as $child_data) {
+                if (!empty($child_data['child_first_name']) && !empty($child_data['child_second_name'])) {
+                    if (!empty($child_data['id'])) {
+                        // Update existing child
+                        $child_stmt = $pdo->prepare("
+                            UPDATE employee_children SET 
+                                child_first_name = ?, child_second_name = ?, child_date_of_birth = ?
+                            WHERE id = ? AND employee_profile_id = ?
+                        ");
+                        $child_stmt->execute([
+                            sanitize($child_data['child_first_name']),
+                            sanitize($child_data['child_second_name']),
+                            $child_data['child_date_of_birth'] ?: null,
+                            (int) $child_data['id'],
+                            $employee_profile_id
+                        ]);
+                    } else {
+                        // Insert new child
+                        $child_stmt = $pdo->prepare("
+                            INSERT INTO employee_children (
+                                employee_profile_id, employee_id, child_first_name, 
+                                child_second_name, child_date_of_birth
+                            ) VALUES (?, ?, ?, ?, ?)
+                        ");
+                        $child_stmt->execute([
+                            $employee_profile_id,
+                            $employee_profile_id, // Set both for compatibility
+                            sanitize($child_data['child_first_name']),
+                            sanitize($child_data['child_second_name']),
+                            $child_data['child_date_of_birth'] ?: null
+                        ]);
                     }
                 }
-
-                $employee_notification_stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, title, message, related_id)
-                    VALUES (?, 'request_responded', ?, ?, ?)
-                ");
-                $employee_notification_stmt->execute([
-                    $current_request['employee_user_id'],
-                    $notification_title,
-                    $notification_message,
-                    $request_id
-                ]);
             }
-
-            // Create notification for assigned user if different from current admin
-            if ($assign_to && $assign_to != $_SESSION['user_id']) {
-                $assign_notification_stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, title, message, related_id)
-                    VALUES (?, 'request_assigned', ?, ?, ?)
-                ");
-                $assign_notification_stmt->execute([
-                    $assign_to,
-                    "New Request Assignment",
-                    "You have been assigned to handle a " . htmlspecialchars($priority) . " priority request",
-                    $request_id
-                ]);
-            }
-
-            // Create follow-up reminder if date is set
-            if ($follow_up_date) {
-                $reminder_stmt = $pdo->prepare("
-                    INSERT INTO request_reminders (request_id, admin_id, reminder_date, message)
-                    VALUES (?, ?, ?, ?)
-                ");
-                $reminder_stmt->execute([
-                    $request_id,
-                    $_SESSION['user_id'],
-                    $follow_up_date,
-                    "Follow up on request response"
-                ]);
-            }
-
-            $pdo->commit();
-            $success = 'Response submitted successfully! Request updated with ' . ucfirst($status) . ' status.';
-
-            // Refresh requests data with the same secure query
-            $stmt = $pdo->prepare("
-                SELECT er.*, ep.first_name, ep.last_name, u.email,
-                       CASE 
-                           WHEN er.priority = 'urgent' THEN 1
-                           WHEN er.priority = 'high' THEN 2
-                           WHEN er.priority = 'normal' THEN 3
-                           WHEN er.priority = 'low' THEN 4
-                           ELSE 5
-                       END as priority_order
-                FROM employee_requests er
-                JOIN employee_profiles ep ON er.employee_id = ep.id
-                JOIN users u ON ep.user_id = u.id
-                WHERE $where_clause
-                ORDER BY $order_by_clause
-                LIMIT $per_page OFFSET $offset
-            ");
-            $stmt->execute($params);
-            $requests = $stmt->fetchAll();
-
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Failed to submit response: ' . htmlspecialchars($e->getMessage());
-            error_log('Admin request response error: ' . $e->getMessage());
         }
-    } else {
-        $error = implode('<br>', array_map('htmlspecialchars', $validation_errors));
+
+        // Handle child removals
+        if (isset($_POST['remove_child']) && is_array($_POST['remove_child'])) {
+            foreach ($_POST['remove_child'] as $child_id) {
+                $remove_stmt = $pdo->prepare("DELETE FROM employee_children WHERE id = ? AND employee_profile_id = ?");
+                $remove_stmt->execute([(int) $child_id, $employee['id']]);
+            }
+        }
+
+        $pdo->commit();
+        $success = 'Profile updated successfully!';
+
+        // Refresh employee data
+        $stmt = $pdo->prepare("
+            SELECT u.*, ep.* 
+            FROM users u 
+            LEFT JOIN employee_profiles ep ON u.id = ep.user_id 
+            WHERE u.id = ?
+        ");
+        $stmt->execute([$_SESSION['user_id']]);
+        $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $error = 'Failed to update profile: ' . $e->getMessage();
+        error_log('Profile update error: ' . $e->getMessage());
     }
 }
 
-// Handle bulk actions with improved validation
-if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token'])) {
-    $bulk_action = $_POST['bulk_action'];
-    $selected_requests = $_POST['selected_requests'] ?? [];
+// Only try to get admin-specific data if user is admin
+$requests = [];
+$notifications = [];
+$stats = [];
+$available_users = [];
 
-    if (empty($selected_requests)) {
-        $error = 'No requests selected for bulk action';
-    } elseif (!in_array($bulk_action, ['mark_pending', 'mark_in_progress', 'mark_completed', 'assign_to_me'])) {
-        $error = 'Invalid bulk action';
-    } else {
-        try {
-            $pdo->beginTransaction();
-            $bulk_success_count = 0;
-            $bulk_errors = [];
-
-            foreach ($selected_requests as $req_id) {
-                $req_id = (int) $req_id;
-
-                // Validate that request exists
-                $check_stmt = $pdo->prepare("SELECT id FROM employee_requests WHERE id = ?");
-                $check_stmt->execute([$req_id]);
-                if (!$check_stmt->fetch()) {
-                    $bulk_errors[] = "Request ID $req_id not found";
-                    continue;
-                }
-
-                try {
-                    switch ($bulk_action) {
-                        case 'mark_pending':
-                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'pending', updated_at = NOW() WHERE id = ?");
-                            $bulk_stmt->execute([$req_id]);
-                            break;
-                        case 'mark_in_progress':
-                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'in_progress', updated_at = NOW() WHERE id = ?");
-                            $bulk_stmt->execute([$req_id]);
-                            break;
-                        case 'mark_completed':
-                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET status = 'completed', updated_at = NOW() WHERE id = ?");
-                            $bulk_stmt->execute([$req_id]);
-                            break;
-                        case 'assign_to_me':
-                            $bulk_stmt = $pdo->prepare("UPDATE employee_requests SET assigned_to = ?, updated_at = NOW() WHERE id = ?");
-                            $bulk_stmt->execute([$_SESSION['user_id'], $req_id]);
-                            break;
-                    }
-                    $bulk_success_count++;
-                } catch (Exception $e) {
-                    $bulk_errors[] = "Failed to update request ID $req_id: " . $e->getMessage();
-                }
-            }
-
-            if (empty($bulk_errors)) {
-                $pdo->commit();
-                $success = "Bulk action completed successfully! Updated $bulk_success_count request(s).";
-            } else {
-                $pdo->rollBack();
-                $error = "Bulk action partially failed. Errors: " . implode(', ', $bulk_errors);
-            }
-
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Bulk action failed: ' . htmlspecialchars($e->getMessage());
-            error_log('Bulk action error: ' . $e->getMessage());
+if ($_SESSION['role'] === 'admin') {
+    // Admin-specific queries with error handling
+    try {
+        // Check if tables exist before querying
+        $table_check = $pdo->query("SHOW TABLES LIKE 'employee_requests'");
+        if ($table_check->rowCount() > 0) {
+            // Get requests statistics
+            $stats_stmt = $pdo->prepare("
+                SELECT 
+                    COUNT(*) as total_requests,
+                    COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_requests,
+                    COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress_requests,
+                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_requests,
+                    COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_requests,
+                    COUNT(CASE WHEN priority = 'urgent' THEN 1 END) as urgent_requests,
+                    COUNT(CASE WHEN priority = 'high' THEN 1 END) as high_priority_requests,
+                    COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as recent_requests
+                FROM employee_requests
+            ");
+            $stats_stmt->execute();
+            $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
         }
+
+        // Check if notifications table exists
+        $notification_check = $pdo->query("SHOW TABLES LIKE 'notifications'");
+        if ($notification_check->rowCount() > 0) {
+            // Get admin notifications
+            $notifications_stmt = $pdo->prepare("
+                SELECT n.*, COUNT(n.id) as notification_count
+                FROM notifications n
+                WHERE n.user_id = ? AND n.type IN ('new_request', 'request_updated', 'urgent_request')
+                GROUP BY n.type, n.is_read
+                ORDER BY n.created_at DESC
+                LIMIT 10
+            ");
+            $notifications_stmt->execute([$_SESSION['user_id']]);
+            $notifications = $notifications_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        }
+
+    } catch (Exception $e) {
+        error_log("Admin data query error: " . $e->getMessage());
     }
 }
-
-// Get available users for assignment - CORRECTED SQL
-$users_stmt = $pdo->prepare("
-    SELECT u.id, u.username, u.email 
-    FROM users u 
-    INNER JOIN employee_profiles ep ON ep.user_id = u.id
-    WHERE u.role IN ('admin', 'employee') AND ep.status = 'active'
-    ORDER BY u.username
-");
-$users_stmt->execute();
-$available_users = $users_stmt->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -430,14 +281,12 @@ $available_users = $users_stmt->fetchAll();
         .profile-form {
             position: relative;
         }
+
         .logo {
             height: 50px;
             margin-right: 15px;
         }
-        img {
-            overflow-clip-margin: content-box;
-            overflow: clip;
-        }
+
         .profile-picture-corner {
             position: absolute;
             top: 20px;
@@ -482,18 +331,6 @@ $available_users = $users_stmt->fetchAll();
             padding-top: 20px;
         }
 
-        @media (max-width: 768px) {
-            .profile-picture-corner {
-                position: static;
-                margin: 0 auto 20px;
-                display: block;
-            }
-
-            .form-content {
-                padding-left: 0;
-                padding-top: 0;
-            }
-        }
         .image-upload-box {
             width: 100%;
             height: 200px;
@@ -535,8 +372,17 @@ $available_users = $users_stmt->fetchAll();
             font-weight: 500;
         }
 
-        .image-upload-box:hover .upload-placeholder {
-            color: #007bff;
+        @media (max-width: 768px) {
+            .profile-picture-corner {
+                position: static;
+                margin: 0 auto 20px;
+                display: block;
+            }
+
+            .form-content {
+                padding-left: 0;
+                padding-top: 0;
+            }
         }
     </style>
 </head>
@@ -574,10 +420,9 @@ $available_users = $users_stmt->fetchAll();
                 <div class="alert alert-success" id="alert-message"><?php echo htmlspecialchars($success); ?></div>
             <?php endif; ?>
 
-
             <!-- Profile Picture Corner -->
             <div class="profile-picture-corner" onclick="document.getElementById('profile_picture').click()">
-                <?php if ($employee['profile_picture'] && isImage($employee['profile_picture'])): ?>
+                <?php if (!empty($employee['profile_picture']) && isImage($employee['profile_picture'])): ?>
                     <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>" alt="Profile Picture">
                 <?php else: ?>
                     <div class="placeholder-icon">👤</div>
@@ -586,19 +431,20 @@ $available_users = $users_stmt->fetchAll();
 
             <form method="POST" action="" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                <input type="file" id="profile_picture" name="profile_picture" accept="image/jpeg,image/png" class="profile-picture-input">
+                <input type="file" id="profile_picture" name="profile_picture" accept="image/jpeg,image/png"
+                    class="profile-picture-input">
 
                 <div class="form-content">
                     <div class="form-row">
                         <div class="form-group readonly">
                             <label for="employee_id">Employee ID</label>
                             <input type="text" id="employee_id"
-                                value="<?php echo htmlspecialchars($employee['employee_id'] ?? NULL); ?>" readonly>
+                                value="<?php echo htmlspecialchars($employee['employee_id'] ?? ''); ?>" readonly>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group readonly">
                             <label for="username">Username</label>
-                            <input type="text" id="username" value="<?php echo htmlspecialchars($employee['username']); ?>"
-                                >
+                            <input type="text" id="username"
+                                value="<?php echo htmlspecialchars($employee['username'] ?? ''); ?>" readonly>
                         </div>
                     </div>
 
@@ -618,7 +464,7 @@ $available_users = $users_stmt->fetchAll();
                     <div class="form-group">
                         <label for="email">Email <span class="required">*</span></label>
                         <input type="email" id="email" name="email"
-                            value="<?php echo htmlspecialchars($employee['email']); ?>" required>
+                            value="<?php echo htmlspecialchars($employee['email'] ?? ''); ?>" required>
                     </div>
 
                     <div class="form-row">
@@ -634,140 +480,142 @@ $available_users = $users_stmt->fetchAll();
                         </div>
                     </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="ncin">NCIN</label>
-                            <input type="text" id="ncin" name="ncin"
-                                value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
-                        </div>
+                    <div class="form-group">
+                        <label for="ncin">NCIN</label>
+                        <input type="text" id="ncin" name="ncin"
+                            value="<?php echo htmlspecialchars($employee['ncin'] ?? ''); ?>">
                     </div>
 
-                   
                     <div class="form-section">
-                    <h3>CIN Images</h3>
+                        <h3>CIN Images</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>CIN Image (Front)</label>
+                                <div class="image-upload-box"
+                                    onclick="document.getElementById('cin_image_front').click()">
+                                    <?php if (!empty($employee['cin_image_front']) && isImage($employee['cin_image_front'])): ?>
+                                        <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
+                                            alt="CIN Front" class="uploaded-image">
+                                    <?php elseif (!empty($employee['cin_image']) && isImage($employee['cin_image'])): ?>
+                                        <img src="<?php echo htmlspecialchars($employee['cin_image']); ?>" alt="CIN"
+                                            class="uploaded-image">
+                                    <?php else: ?>
+                                        <div class="upload-placeholder">
+                                            <div class="upload-icon">📷</div>
+                                            <div class="upload-text">Click to upload CIN Front</div>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                                <input type="file" id="cin_image_front" name="cin_image_front"
+                                    accept="image/jpeg,image/png" style="display: none;">
+                            </div>
+
+                            <div class="form-group">
+                                <label>CIN Image (Back)</label>
+                                <div class="image-upload-box"
+                                    onclick="document.getElementById('cin_image_back').click()">
+                                    <?php if (!empty($employee['cin_image_back']) && isImage($employee['cin_image_back'])): ?>
+                                        <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>"
+                                            alt="CIN Back" class="uploaded-image">
+                                    <?php else: ?>
+                                        <div class="upload-placeholder">
+                                            <div class="upload-icon">📷</div>
+                                            <div class="upload-text">Click to upload CIN Back</div>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                                <input type="file" id="cin_image_back" name="cin_image_back"
+                                    accept="image/jpeg,image/png" style="display: none;">
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group">
-                            <label>CIN Image (Front)</label>
-                            <div class="image-upload-box" onclick="document.getElementById('cin_image_front').click()">
-                                <?php if ($employee['cin_image_front'] && isImage($employee['cin_image_front'])): ?>
-                                    <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>" alt="CIN Front" class="uploaded-image">
-                                <?php else: ?>
-                                    <div class="upload-placeholder">
-                                        <div class="upload-icon">📷</div>
-                                        <div class="upload-text">Click to upload CIN Front</div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <input type="file" id="cin_image_front" name="cin_image_front" accept="image/jpeg,image/png" style="display: none;">
+                            <label for="cnss_first">CNSS (First 8 digits)</label>
+                            <input type="text" id="cnss_first" name="cnss_first" maxlength="8" pattern="\d{8}"
+                                value="<?php echo htmlspecialchars($employee['cnss_first'] ?? ''); ?>">
                         </div>
-                        
                         <div class="form-group">
-                            <label>CIN Image (Back)</label>
-                            <div class="image-upload-box" onclick="document.getElementById('cin_image_back').click()">
-                                <?php if ($employee['cin_image_back'] && isImage($employee['cin_image_back'])): ?>
-                                    <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>" alt="CIN Back" class="uploaded-image">
-                                <?php else: ?>
-                                    <div class="upload-placeholder">
-                                        <div class="upload-icon">📷</div>
-                                        <div class="upload-text">Click to upload CIN Back</div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <input type="file" id="cin_image_back" name="cin_image_back" accept="image/jpeg,image/png" style="display: none;">
+                            <label for="cnss_last">CNSS (Last 2 digits)</label>
+                            <input type="text" id="cnss_last" name="cnss_last" maxlength="2" pattern="\d{2}"
+                                value="<?php echo htmlspecialchars($employee['cnss_last'] ?? ''); ?>">
                         </div>
                     </div>
-                </div>
 
-
-                <div class="form-row">
                     <div class="form-group">
-                        <label for="cnss_first">CNSS (First 8 digits)</label>
-                        <input type="text" id="cnss_first" name="cnss_first" maxlength="8" pattern="\d{8}"
-                            value="<?php echo htmlspecialchars($employee['cnss_first'] ?? ''); ?>">
+                        <label for="education">Education</label>
+                        <input type="text" id="education" name="education"
+                            value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
                     </div>
+
                     <div class="form-group">
-                        <label for="cnss_last">CNSS (Last 2 digits)</label>
-                        <input type="text" id="cnss_last" name="cnss_last" maxlength="2" pattern="\d{2}"
-                            value="<?php echo htmlspecialchars($employee['cnss_last'] ?? ''); ?>">
+                        <label>Has Driving License</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="has_driving_license" value="1" <?php echo (!empty($employee['has_driving_license']) && $employee['has_driving_license'] == '1') ? 'checked' : ''; ?>>
+                                Yes
+                            </label>
+                            <label>
+                                <input type="radio" name="has_driving_license" value="0" <?php echo (empty($employee['has_driving_license']) || $employee['has_driving_license'] == '0') ? 'checked' : ''; ?>>
+                                No
+                            </label>
+                        </div>
                     </div>
-                </div>
 
-                <div class="form-group">
-                    <label for="education">Education</label>
-                    <input type="text" id="education" name="education"
-                        value="<?php echo htmlspecialchars($employee['education'] ?? ''); ?>">
-                </div>
-
-                <div class="form-group">
-                    <label>Has Driving License</label>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="has_driving_license" value="1"
-                                <?php echo (isset($employee['has_driving_license']) && $employee['has_driving_license'] == '1') ? 'checked' : ''; ?>>
-                            Yes
-                        </label>
-                        <label>
-                            <input type="radio" name="has_driving_license" value="0"
-                                <?php echo (!isset($employee['has_driving_license']) || $employee['has_driving_license'] == '0') ? 'checked' : ''; ?>>
-                            No
-                        </label>
-                    </div>
-                </div>
-                <?php if (isset($employee['has_driving_license']) && $employee['has_driving_license'] == '1'): ?>
-                    <script>
-                        document.addEventListener('DOMContentLoaded', function () {
-                            document.getElementById('driving-license-section').style.display = 'block';
-                        });
-                    </script>
-                    <div class="form-group" id="driving-license-section">
+                    <div class="form-group" id="driving-license-section"
+                        style="display: <?php echo (!empty($employee['has_driving_license']) && $employee['has_driving_license'] == '1') ? 'block' : 'none'; ?>;">
                         <label for="driving_license_category">Driving License Category</label>
                         <input type="text" id="driving_license_category" name="driving_license_category"
                             value="<?php echo htmlspecialchars($employee['driving_license_category'] ?? ''); ?>">
+
                         <label for="driving_license_number">Driving License Number</label>
                         <input type="text" id="driving_license_number" name="driving_license_number"
                             value="<?php echo htmlspecialchars($employee['driving_license_number'] ?? ''); ?>">
-                    </div>
 
-                    <!-- Enhanced Driving License Image Section -->
-                    <div class="form-section" id="driving-license-image-section">
-                        <h3>Driving License</h3>
-                        <div class="form-group">
-                            <label>Driving License Image</label>
-                            <div class="image-upload-box" onclick="document.getElementById('driving_license_image').click()">
-                                <?php if ($employee['driving_license_image'] && isImage($employee['driving_license_image'])): ?>
-                                    <img src="<?php echo htmlspecialchars($employee['driving_license_image']); ?>" alt="Driving License" class="uploaded-image">
-                                <?php else: ?>
-                                    <div class="upload-placeholder">
-                                        <div class="upload-icon">🚗</div>
-                                        <div class="upload-text">Click to upload Driving License</div>
-                                    </div>
-                                <?php endif; ?>
+                        <!-- Driving License Image Section -->
+                        <div class="form-section" id="driving-license-image-section">
+                            <h3>Driving License</h3>
+                            <div class="form-group">
+                                <label>Driving License Image</label>
+                                <div class="image-upload-box"
+                                    onclick="document.getElementById('driving_license_image').click()">
+                                    <?php if (!empty($employee['driving_license_image']) && isImage($employee['driving_license_image'])): ?>
+                                        <img src="<?php echo htmlspecialchars($employee['driving_license_image']); ?>"
+                                            alt="Driving License" class="uploaded-image">
+                                    <?php else: ?>
+                                        <div class="upload-placeholder">
+                                            <div class="upload-icon">🚗</div>
+                                            <div class="upload-text">Click to upload Driving License</div>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                                <input type="file" id="driving_license_image" name="driving_license_image"
+                                    accept="image/jpeg,image/png" style="display: none;">
                             </div>
-                            <input type="file" id="driving_license_image" name="driving_license_image" accept="image/jpeg,image/png" style="display: none;">
                         </div>
                     </div>
-                <?php endif; ?>                   
-                <div class="form-group">
-                    <label for="gender">Gender <span class="required">*</span></label>
+
+                    <div class="form-group">
+                        <label for="gender">Gender <span class="required">*</span></label>
                         <select id="gender" name="gender" required>
                             <option value="male" <?php echo ($employee['gender'] === 'male') ? 'selected' : ''; ?>>Male
                             </option>
                             <option value="female" <?php echo ($employee['gender'] === 'female') ? 'selected' : ''; ?>>
-                                Female
-                            </option>
+                                Female</option>
                         </select>
                     </div>
 
                     <div class="form-group">
                         <label for="factory">Factory <span class="required">*</span></label>
                         <select id="factory" name="factory" required>
-                            <option value="1" <?php echo ($employee['factory'] === '1') ? 'selected' : ''; ?>>Factory 1
+                            <option value="1" <?php echo ($employee['factory'] == '1') ? 'selected' : ''; ?>>Factory 1
                             </option>
-                            <option value="2" <?php echo ($employee['factory'] === '2') ? 'selected' : ''; ?>>Factory 2
+                            <option value="2" <?php echo ($employee['factory'] == '2') ? 'selected' : ''; ?>>Factory 2
                             </option>
-                            <option value="3" <?php echo ($employee['factory'] === '3') ? 'selected' : ''; ?>>Factory 3
+                            <option value="3" <?php echo ($employee['factory'] == '3') ? 'selected' : ''; ?>>Factory 3
                             </option>
-                            <option value="4" <?php echo ($employee['factory'] === '4') ? 'selected' : ''; ?>>Factory 4
+                            <option value="4" <?php echo ($employee['factory'] == '4') ? 'selected' : ''; ?>>Factory 4
                             </option>
                         </select>
                     </div>
@@ -775,37 +623,36 @@ $available_users = $users_stmt->fetchAll();
                     <div class="form-row">
                         <div class="form-group">
                             <label for="department">Department</label>
-                            <input type="text" id="department"
-                                value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>"
-                            >
+                            <input type="text" id="department" name="department"
+                                value="<?php echo htmlspecialchars($employee['department'] ?? 'Not specified'); ?>">
                         </div>
                         <div class="form-group">
                             <label for="position">Position</label>
-                            <input type="text" id="position"
-                                value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>"
-                            >
+                            <input type="text" id="position" name="position"
+                                value="<?php echo htmlspecialchars($employee['position'] ?? 'Not specified'); ?>">
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="address">Address</label>
                         <input type="text" id="address" name="address" maxlength="32"
-                            placeholder="Enter your full address" value="<?php echo htmlspecialchars($employee['address'] ?? ''); ?>">
+                            placeholder="Enter your full address"
+                            value="<?php echo htmlspecialchars($employee['address'] ?? ''); ?>">
                     </div>
 
                     <div class="form-row">
                         <div class="form-group readonly">
                             <label for="hire_date">Hire Date</label>
                             <input type="text" id="hire_date"
-                                value="<?php echo $employee['hire_date'] ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>"
+                                value="<?php echo !empty($employee['hire_date']) ? date('F j, Y', strtotime($employee['hire_date'])) : 'Not specified'; ?>"
                                 readonly>
                         </div>
                     </div>
+
                     <div class="form-group">
                         <label for="civil_status">Civil Status <span class="required">*</span></label>
                         <select id="civil_status" name="civil_status" required>
-                            <option value="single" <?php echo ($employee['civil_status'] === 'single') ? 'selected' : ''; ?>>
-                                Single</option>
+                            <option value="single" <?php echo ($employee['civil_status'] === 'single') ? 'selected' : ''; ?>>Single</option>
                             <option value="married" <?php echo ($employee['civil_status'] === 'married') ? 'selected' : ''; ?>>Married</option>
                             <option value="divorced" <?php echo ($employee['civil_status'] === 'divorced') ? 'selected' : ''; ?>>Divorced</option>
                             <option value="widowed" <?php echo ($employee['civil_status'] === 'widowed') ? 'selected' : ''; ?>>Widowed</option>
@@ -850,11 +697,28 @@ $available_users = $users_stmt->fetchAll();
                     <div class="form-actions">
                         <button type="submit" name="update_profile" class="btn">Update Profile</button>
                     </div>
+                </div>
             </form>
         </div>
     </div>
 
     <script>
+        // Show/hide driving license section
+        document.addEventListener('DOMContentLoaded', function () {
+            const drivingLicenseRadios = document.querySelectorAll('input[name="has_driving_license"]');
+            const drivingLicenseSection = document.getElementById('driving-license-section');
+
+            drivingLicenseRadios.forEach(radio => {
+                radio.addEventListener('change', function () {
+                    if (this.value === '1') {
+                        drivingLicenseSection.style.display = 'block';
+                    } else {
+                        drivingLicenseSection.style.display = 'none';
+                    }
+                });
+            });
+        });
+
         // Add new child row
         document.getElementById('add-child').addEventListener('click', function () {
             const container = document.getElementById('new-children');
@@ -897,7 +761,6 @@ $available_users = $users_stmt->fetchAll();
                 // Remove new (unsaved) child row
                 row.remove();
             }
-
             // Re-index all visible child rows
             reindexChildRows();
         }
@@ -916,14 +779,16 @@ $available_users = $users_stmt->fetchAll();
                 });
             });
         }
+
+        // Auto-hide alert messages
         document.addEventListener('DOMContentLoaded', function () {
-        const alert = document.getElementById('alert-message');
-        if (alert) {
-            setTimeout(() => {
-                alert.style.display = 'none';
-            }, 3000);
-        }
-    });
+            const alert = document.getElementById('alert-message');
+            if (alert) {
+                setTimeout(() => {
+                    alert.style.display = 'none';
+                }, 5000);
+            }
+        });
     </script>
 </body>
 
