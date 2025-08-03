@@ -152,6 +152,15 @@ function calculateAge($dateOfBirth)
             overflow: clip;
         }
 
+        .admin-badge {
+            background: #a70202;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
         .navbar {
             background: white;
             padding-top: 15px;

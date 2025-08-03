@@ -61,9 +61,72 @@ if ($_POST && isset($_POST['login'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Employee Management System</title>
     <link rel="stylesheet" href="login.css">
+    <style>
+        .logo {
+            height: 50px;
+            margin-right: 15px;
+        }
+
+        img {
+            overflow-clip-margin: content-box;
+            overflow: clip;
+        }
+
+        .navbar {
+            background: white;
+            padding-top: 15px;
+            padding-bottom: 15px;
+            padding-left: 0;
+            padding-right: 0;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .navbar-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .navbar-brand {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .navbar-nav {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-left: auto;
+        }
+
+        .nav-link {
+            color: #333;
+            text-decoration: none;
+            font-size: 16px;
+            transition: color 0.3s;
+        }
+
+        .nav-link:hover {
+            color: #a70202;
+        }
+    </style>
 </head>
 
 <body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <img src="logo.png" alt="Logo" class="logo">
+            <div class="navbar-nav">
+                <a href="index.php" class="nav-link">Home</a>
+                <a href='jobs.php' class="nav-link">Jobs</a>
+            </div>
+        </div>
+    </nav>
     <div class="login-container">
         <div class="login-header">
             <h1>Employee Login</h1>

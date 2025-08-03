@@ -631,6 +631,8 @@ if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token
                 <a href="employees_listing.php" class="nav-link">Employees</a>
                 <a href="profile.php" class="nav-link">My Profile</a>
                 <a href="admin_request.php" class="nav-link">Requests</a>
+                <a href="admin_jobs.php" class="nav-link active">Jobs</a>
+                <a href="admin_applications.php" class="nav-link">Applications</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>

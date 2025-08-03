@@ -280,12 +280,124 @@ BEFORE
             END
             IF;
 END//
+            CREATE TABLE job_postings (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    title VARCHAR
+            (255) NOT NULL,
+    department VARCHAR
+            (100) NOT NULL,
+    location VARCHAR
+            (255) NOT NULL,
+    employment_type ENUM
+            ('full_time', 'part_time', 'contract', 'internship') NOT NULL DEFAULT 'full_time',
+    salary_min DECIMAL
+            (10,2) NULL,
+    salary_max DECIMAL
+            (10,2) NULL,
+    currency VARCHAR
+            (3) DEFAULT 'USD',
+    description TEXT NOT NULL,
+    requirements TEXT NOT NULL,
+    responsibilities TEXT NOT NULL,
+    benefits TEXT NULL,
+    application_deadline DATE NULL,
+    status ENUM
+            ('draft', 'active', 'closed', 'filled') NOT NULL DEFAULT 'draft',
+    posted_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+            UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (posted_by) REFERENCES users
+            (id) ON
+            DELETE CASCADE,
+    INDEX idx_status_deadline (status, application_deadline
+            ),
+    INDEX idx_department
+            (department),
+    INDEX idx_created_at
+            (created_at DESC)
+);
 
-DELIMITER ;
+            -- Job applications table
+            CREATE TABLE job_applications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    job_posting_id INT NOT NULL,
+    applicant_name VARCHAR
+            (255) NOT NULL,
+    applicant_email VARCHAR
+            (255) NOT NULL,
+    applicant_phone VARCHAR
+            (20) NULL,
+    cover_letter TEXT NOT NULL,
+    resume_path VARCHAR
+            (500) NULL,
+    additional_documents TEXT NULL, -- JSON array of file paths
+    years_experience INT NULL,
+    expected_salary DECIMAL
+            (10,2) NULL,
+    availability_date DATE NULL,
+    status ENUM
+            ('submitted', 'under_review', 'shortlisted', 'interviewed', 'rejected', 'hired') NOT NULL DEFAULT 'submitted',
+    admin_notes TEXT NULL,
+    reviewed_by INT NULL,
+    reviewed_at TIMESTAMP NULL,
+    application_number VARCHAR
+            (20) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+            UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (job_posting_id) REFERENCES job_postings
+            (id) ON
+            DELETE CASCADE,
+    FOREIGN KEY (reviewed_by)
+            REFERENCES users
+            (id) ON
+            DELETE
+            SET NULL
+            ,
+    INDEX idx_job_status
+            (job_posting_id, status),
+    INDEX idx_email
+            (applicant_email),
+    INDEX idx_created_at
+            (created_at DESC)
+);
 
-            -- Insert initial status history for existing requests (optional)
-            INSERT INTO request_status_history
-                (request_id, old_status, new_status, changed_by, notes, created_at)
-            SELECT id, NULL, status, admin_id, 'Initial status', created_at
-            FROM employee_requests
-            WHERE admin_id IS NOT NULL;
+            -- Job application status history
+            CREATE TABLE job_application_status_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    application_id INT NOT NULL,
+    old_status VARCHAR
+            (50) NULL,
+    new_status VARCHAR
+            (50) NOT NULL,
+    changed_by INT NOT NULL,
+    notes TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (application_id) REFERENCES job_applications
+            (id) ON
+            DELETE CASCADE,
+    FOREIGN KEY (changed_by)
+            REFERENCES users
+            (id) ON
+            DELETE CASCADE
+);
+
+            -- Job posting views/analytics (optional)
+            CREATE TABLE job_posting_views (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    job_posting_id INT NOT NULL,
+    ip_address VARCHAR
+            (45) NOT NULL,
+    user_agent TEXT NULL,
+    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY
+            (job_posting_id) REFERENCES job_postings
+            (id) ON
+            DELETE CASCADE,
+    INDEX idx_job_date (job_posting_id, viewed_at
+            )
+);

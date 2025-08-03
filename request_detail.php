@@ -99,10 +99,10 @@ if ($_POST && isset($_POST['submit_comment']) && verifyCSRFToken($_POST['csrf_to
     } else {
         try {
             $stmt->execute([$request_id, $_SESSION['user_id'], $comment, $is_internal]);
-            
-        // FIXED: Redirect to prevent resubmission
-        header('Location: request_detail.php?id=' . $request_id . '&success=Comment added successfully');
-        exit();
+
+            // FIXED: Redirect to prevent resubmission
+            header('Location: request_detail.php?id=' . $request_id . '&success=Comment added successfully');
+            exit();
         } catch (Exception $e) {
             $error = 'Failed to add comment: ' . $e->getMessage();
         }
@@ -143,10 +143,10 @@ if ($_POST && isset($_POST['upload_attachment']) && verifyCSRFToken($_POST['csrf
                         $file['type'],
                         $file_path
                     ]);
-                    
-                // FIXED: Redirect to prevent resubmission
-                header('Location: request_detail.php?id=' . $request_id . '&success=File uploaded successfully');
-                exit();
+
+                    // FIXED: Redirect to prevent resubmission
+                    header('Location: request_detail.php?id=' . $request_id . '&success=File uploaded successfully');
+                    exit();
                 } catch (Exception $e) {
                     $error = 'Failed to save attachment: ' . $e->getMessage();
                     unlink($file_path);
@@ -240,7 +240,6 @@ if ($_POST && isset($_POST['upload_attachment']) && verifyCSRFToken($_POST['csrf
             <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
                 <?php if ($is_admin): ?>
-                    <<?php if ($_SESSION['role'] === 'admin'): ?>
                     <span class="admin-badge">ADMIN</span>
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                     <a href="employees_listing.php" class="nav-link">Employees</a>
@@ -391,7 +390,7 @@ if ($_POST && isset($_POST['upload_attachment']) && verifyCSRFToken($_POST['csrf
             <!-- Assignment History -->
             <div class="assignment-history">
                 <div class="section-header">
-                    <div class ="the-section-icon">👥</div>
+                    <div class="section-icon">👥</div>
                     <h3>Assignment History</h3>
                 </div>
                 <?php if (empty($assignment_history)): ?>

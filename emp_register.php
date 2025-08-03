@@ -335,11 +335,65 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             overflow-clip-margin: content-box;
             overflow: clip;
         }
+
+        .navbar {
+            background: white;
+            padding-top: 15px;
+            padding-bottom: 15px;
+            padding-left: 0;
+            padding-right: 0;
+            border-radius: 10px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .navbar-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .navbar-nav {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .nav-link {
+            color: #333;
+            text-decoration: none;
+            font-size: 1rem;
+            transition: color 0.3s;
+        }
+
+        .nav-link:hover,
+        .nav-link:focus {
+            color: #a70202;
+            text-decoration: underline;
+            outline: none;
+        }
     </style>
 
 </head>
 
 <body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <img src="logo.png" alt="Logo" class="logo">
+            <div class="navbar-nav">
+                <a href="index.php" class="nav-link">Home</a>
+                <a href='jobs.php' class="nav-link">Jobs</a>
+            </div>
+        </div>
+    </nav>
     <div class="register-container">
         <div class="register-header">
             <h1>Employee Registration</h1>

@@ -400,4 +400,32 @@ function sanitize_file_name($filename)
     $filename = preg_replace("/[^a-zA-Z0-9\.\-_]/", "", $filename);
     return $filename;
 }
+
+?>
+<?php
+/**
+ * Log an error message to a file
+ */
+function logError($message)
+{
+    $logFile = __DIR__ . '/error.log';
+    $date = date('Y-m-d H:i:s');
+    $entry = "[$date] ERROR: $message" . PHP_EOL;
+    file_put_contents($logFile, $entry, FILE_APPEND);
+}
+
+/**
+ * Log debug information to a file
+ */
+function debugLog($label, $data = null)
+{
+    $logFile = __DIR__ . '/debug.log';
+    $date = date('Y-m-d H:i:s');
+    $entry = "[$date] DEBUG: $label";
+    if ($data !== null) {
+        $entry .= ' | ' . print_r($data, true);
+    }
+    $entry .= PHP_EOL;
+    file_put_contents($logFile, $entry, FILE_APPEND);
+}
 ?>

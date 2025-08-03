@@ -138,6 +138,7 @@ if ($_POST && isset($_POST['login']) && verifyCSRFToken($_POST['csrf_token'])) {
         <div class="navbar-container">
             <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
+                <a href="jobs.php" class="nav-link">Jobs</a>
                 <a href="login.php" class="nav-link">Login</a>
             </div>
         </div>

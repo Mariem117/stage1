@@ -396,11 +396,12 @@ if ($_SESSION['role'] === 'admin') {
                     <span class="admin-badge">ADMIN</span>
                     <a href="dashboard.php" class="nav-link">Dashboard</a>
                     <a href="employees_listing.php" class="nav-link">Employees</a>
+                    <a href="profile.php" class="nav-link">My Profile</a>
                     <a href="admin_request.php" class="nav-link">Requests</a>
                 <?php else: ?>
+                    <a href="profile.php" class="nav-link">My Profile</a>
                     <a href="emp_request.php" class="nav-link">Requests</a>
                 <?php endif; ?>
-                <a href="profile.php" class="nav-link">My Profile</a>
                 <a href="logout.php" class="nav-link">Logout</a>
             </div>
         </div>
