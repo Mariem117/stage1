@@ -71,7 +71,6 @@ if ($_POST && isset($_POST['create_job']) && verifyCSRFToken($_POST['csrf_token'
     }
 
     if (empty($validation_errors)) {
-        // Add after validation but before database insert
         debugLog("Creating job posting", [
             'title' => $title,
             'department' => $department,
@@ -81,15 +80,24 @@ if ($_POST && isset($_POST['create_job']) && verifyCSRFToken($_POST['csrf_token'
             'post_data' => $_POST
         ]);
 
-        // Add try-catch around the insert
         try {
+            // Start transaction
+            $pdo->beginTransaction();
+            
+            // Check if the table exists and has the expected structure
+            $table_check = $pdo->query("DESCRIBE job_postings");
+            if (!$table_check) {
+                throw new Exception("job_postings table does not exist");
+            }
+            
             $stmt = $pdo->prepare("
                 INSERT INTO job_postings (
                     title, department, location, employment_type, salary_min, salary_max, currency,
-                    description, requirements, responsibilities, benefits, application_deadline, status, posted_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    description, requirements, responsibilities, benefits, application_deadline, status, posted_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             ");
-            $stmt->execute([
+            
+            $result = $stmt->execute([
                 $title,
                 $department,
                 $location,
@@ -105,10 +113,61 @@ if ($_POST && isset($_POST['create_job']) && verifyCSRFToken($_POST['csrf_token'
                 $status,
                 $_SESSION['user_id']
             ]);
-            header('Location: admin_jobs.php?success=Job posting created successfully');
+            
+            if (!$result) {
+                // Get detailed error information
+                $errorInfo = $stmt->errorInfo();
+                throw new Exception("Insert failed: " . $errorInfo[2]);
+            }
+            
+            // Check if any rows were actually affected
+            $rowCount = $stmt->rowCount();
+            if ($rowCount === 0) {
+                throw new Exception("No rows were inserted");
+            }
+            
+            // Get the inserted job ID
+            $jobId = $pdo->lastInsertId();
+            if (!$jobId) {
+                throw new Exception("Failed to get inserted job ID");
+            }
+            
+            // Verify the data was actually inserted
+            $verify_stmt = $pdo->prepare("SELECT COUNT(*) FROM job_postings WHERE id = ?");
+            $verify_stmt->execute([$jobId]);
+            $count = $verify_stmt->fetchColumn();
+            
+            if ($count == 0) {
+                throw new Exception("Data verification failed - record not found after insert");
+            }
+            
+            // Commit the transaction
+            $pdo->commit();
+            
+            $success = "Job posting created successfully! Job ID: " . $jobId;
+            
+            // Log success
+            error_log("Job posting created successfully. ID: " . $jobId);
+            
+            // Redirect to admin jobs page with success message
+            header('Location: admin_jobs.php?success=' . urlencode('Job posting created successfully'));
             exit();
+            
         } catch (Exception $e) {
+            // Rollback the transaction
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            
             $error = 'Failed to create job posting: ' . $e->getMessage();
+            
+            // Log the detailed error
+            error_log("Job posting creation failed: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            
+            // Additional debugging information
+            error_log("PDO Error Info: " . print_r($pdo->errorInfo(), true));
+            error_log("Statement Error Info: " . (isset($stmt) ? print_r($stmt->errorInfo(), true) : 'Statement not created'));
         }
     } else {
         $error = implode(' | ', $validation_errors);
@@ -116,9 +175,14 @@ if ($_POST && isset($_POST['create_job']) && verifyCSRFToken($_POST['csrf_token'
 }
 
 // Get departments for dropdown (from existing employee profiles or predefined list)
-$dept_stmt = $pdo->prepare("SELECT DISTINCT department FROM employee_profiles WHERE department IS NOT NULL ORDER BY department");
-$dept_stmt->execute();
-$existing_departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
+try {
+    $dept_stmt = $pdo->prepare("SELECT DISTINCT department FROM employee_profiles WHERE department IS NOT NULL ORDER BY department");
+    $dept_stmt->execute();
+    $existing_departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Exception $e) {
+    error_log("Failed to fetch departments: " . $e->getMessage());
+    $existing_departments = [];
+}
 
 // Predefined departments if none exist
 $predefined_departments = ['HR', 'IT', 'Finance', 'Marketing', 'Sales', 'Operations', 'Customer Service'];
@@ -313,6 +377,7 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
             margin-top: 20px;
             border: 1px solid #bee5eb;
         }
+
     </style>
 </head>
 
@@ -335,11 +400,13 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
 
     <div class="container">
         <?php if ($error): ?>
-            <div class="alert alert-error"><?php echo $error; ?></div>
+            <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
         <?php endif; ?>
         <?php if ($success): ?>
-            <div class="alert alert-success"><?php echo $success; ?></div>
+            <div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
         <?php endif; ?>
+
+       
 
         <div class="form-card">
             <div class="form-header">
@@ -358,18 +425,22 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                         <div class="form-group">
                             <label for="title">Job Title <span class="required">*</span></label>
                             <input type="text" id="title" name="title" required
-                                placeholder="e.g. Senior Software Developer">
+                                value="<?php echo isset($_POST['title']) ? htmlspecialchars($_POST['title']) : ''; ?>"
+                            >
                         </div>
                         <div class="form-group">
                             <label for="department">Department <span class="required">*</span></label>
                             <select id="department" name="department" required>
                                 <option value="">Select Department</option>
                                 <?php foreach ($departments as $dept): ?>
-                                    <option value="<?php echo htmlspecialchars($dept); ?>">
+                                    <option value="<?php echo htmlspecialchars($dept); ?>" 
+                                        <?php echo (isset($_POST['department']) && $_POST['department'] == $dept) ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars(ucfirst($dept)); ?>
                                     </option>
                                 <?php endforeach; ?>
-                                <option value="other">Other (specify in description)</option>
+                                <option value="other" <?php echo (isset($_POST['department']) && $_POST['department'] == 'other') ? 'selected' : ''; ?>>
+                                    Other (specify in description)
+                                </option>
                             </select>
                         </div>
                     </div>
@@ -378,16 +449,17 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                         <div class="form-group">
                             <label for="location">Location <span class="required">*</span></label>
                             <input type="text" id="location" name="location" required
-                                placeholder="e.g. New York, NY or Remote">
+                                value="<?php echo isset($_POST['location']) ? htmlspecialchars($_POST['location']) : ''; ?>"
+                               >
                         </div>
                         <div class="form-group">
                             <label for="employment_type">Employment Type <span class="required">*</span></label>
                             <select id="employment_type" name="employment_type" required>
                                 <option value="">Select Type</option>
-                                <option value="full_time">Full Time</option>
-                                <option value="part_time">Part Time</option>
-                                <option value="contract">Contract</option>
-                                <option value="internship">Internship</option>
+                                <option value="full_time" <?php echo (isset($_POST['employment_type']) && $_POST['employment_type'] == 'full_time') ? 'selected' : ''; ?>>Full Time</option>
+                                <option value="part_time" <?php echo (isset($_POST['employment_type']) && $_POST['employment_type'] == 'part_time') ? 'selected' : ''; ?>>Part Time</option>
+                                <option value="contract" <?php echo (isset($_POST['employment_type']) && $_POST['employment_type'] == 'contract') ? 'selected' : ''; ?>>Contract</option>
+                                <option value="internship" <?php echo (isset($_POST['employment_type']) && $_POST['employment_type'] == 'internship') ? 'selected' : ''; ?>>Internship</option>
                             </select>
                         </div>
                     </div>
@@ -400,22 +472,23 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                     <div class="salary-grid">
                         <div class="form-group">
                             <label for="salary_min">Minimum Salary</label>
-                            <input type="number" id="salary_min" name="salary_min" min="0" step="1000"
-                                placeholder="e.g. 50000">
+                            <input type="number" id="salary_min" name="salary_min" min="0" 
+                                value="<?php echo isset($_POST['salary_min']) ? htmlspecialchars($_POST['salary_min']) : ''; ?>"
+                                >
                             <div class="form-help">Leave empty if salary is negotiable</div>
                         </div>
                         <div class="form-group">
                             <label for="salary_max">Maximum Salary</label>
-                            <input type="number" id="salary_max" name="salary_max" min="0" step="1000"
-                                placeholder="e.g. 70000">
+                            <input type="number" id="salary_max" name="salary_max" min="0" 
+                                value="<?php echo isset($_POST['salary_max']) ? htmlspecialchars($_POST['salary_max']) : ''; ?>"
+                                >
                         </div>
                         <div class="form-group">
                             <label for="currency">Currency</label>
                             <select id="currency" name="currency">
-                                <option value="USD">USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="TND" selected>TND</option>
-                                <option value="GBP">GBP</option>
+                                <option value="USD" <?php echo (isset($_POST['currency']) && $_POST['currency'] == 'USD') ? 'selected' : ''; ?>>USD</option>
+                                <option value="EUR" <?php echo (isset($_POST['currency']) && $_POST['currency'] == 'EUR') ? 'selected' : ''; ?>>EUR</option>
+                                <option value="TND" <?php echo (!isset($_POST['currency']) || $_POST['currency'] == 'TND') ? 'selected' : ''; ?>>TND</option>
                             </select>
                         </div>
                     </div>
@@ -428,28 +501,28 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                     <div class="form-group full-width">
                         <label for="description">Job Description <span class="required">*</span></label>
                         <textarea id="description" name="description" required
-                            placeholder="Provide a comprehensive description of the role, company culture, and what makes this opportunity exciting..."></textarea>
+                            placeholder="Provide a comprehensive description of the role, company culture, and what makes this opportunity exciting..."><?php echo isset($_POST['description']) ? htmlspecialchars($_POST['description']) : ''; ?></textarea>
                         <div id="desc-counter" class="char-counter">0 characters (minimum 50)</div>
                     </div>
 
                     <div class="form-group full-width">
                         <label for="responsibilities">Key Responsibilities <span class="required">*</span></label>
                         <textarea id="responsibilities" name="responsibilities" required
-                            placeholder="List the main responsibilities and duties for this position..."></textarea>
+                            placeholder="List the main responsibilities and duties for this position..."><?php echo isset($_POST['responsibilities']) ? htmlspecialchars($_POST['responsibilities']) : ''; ?></textarea>
                         <div id="resp-counter" class="char-counter">0 characters (minimum 20)</div>
                     </div>
 
                     <div class="form-group full-width">
                         <label for="requirements">Requirements & Qualifications <span class="required">*</span></label>
                         <textarea id="requirements" name="requirements" required
-                            placeholder="List the required skills, experience, education, and qualifications..."></textarea>
+                            placeholder="List the required skills, experience, education, and qualifications..."><?php echo isset($_POST['requirements']) ? htmlspecialchars($_POST['requirements']) : ''; ?></textarea>
                         <div id="req-counter" class="char-counter">0 characters (minimum 20)</div>
                     </div>
 
                     <div class="form-group full-width">
                         <label for="benefits">Benefits & Perks</label>
                         <textarea id="benefits" name="benefits"
-                            placeholder="Describe the benefits package, perks, and what makes working here great..."></textarea>
+                            placeholder="Describe the benefits package, perks, and what makes working here great..."><?php echo isset($_POST['benefits']) ? htmlspecialchars($_POST['benefits']) : ''; ?></textarea>
                         <div class="form-help">Optional: Health insurance, flexible hours, remote work, etc.</div>
                     </div>
                 </div>
@@ -462,14 +535,15 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                         <div class="form-group">
                             <label for="application_deadline">Application Deadline</label>
                             <input type="date" id="application_deadline" name="application_deadline"
+                                value="<?php echo isset($_POST['application_deadline']) ? htmlspecialchars($_POST['application_deadline']) : ''; ?>"
                                 min="<?php echo date('Y-m-d', strtotime('+1 day')); ?>">
                             <div class="form-help">Leave empty for no deadline</div>
                         </div>
                         <div class="form-group">
                             <label for="status">Publication Status <span class="required">*</span></label>
                             <select id="status" name="status" required>
-                                <option value="draft">Draft (not visible to public)</option>
-                                <option value="active">Active (visible to applicants)</option>
+                                <option value="draft" <?php echo (!isset($_POST['status']) || $_POST['status'] == 'draft') ? 'selected' : ''; ?>>Draft (not visible to public)</option>
+                                <option value="active" <?php echo (isset($_POST['status']) && $_POST['status'] == 'active') ? 'selected' : ''; ?>>Active (visible to applicants)</option>
                             </select>
                         </div>
                     </div>
@@ -488,6 +562,7 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                         🆕 Create Job Posting
                     </button>
                     <a href="admin_jobs.php" class="btn btn-secondary">❌ Cancel</a>
+                    
                 </div>
             </form>
         </div>
@@ -499,13 +574,16 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
             const textarea = document.getElementById(textareaId);
             const counter = document.getElementById(counterId);
 
-            textarea.addEventListener('input', function () {
-                const length = this.value.length;
+            function updateCounter() {
+                const length = textarea.value.length;
                 counter.textContent = length + ' characters (minimum ' + minLength + ')';
                 counter.style.color = length >= minLength ? '#28a745' : '#dc3545';
-
                 updateSubmitButton();
-            });
+            }
+
+            textarea.addEventListener('input', updateCounter);
+            // Initialize counter on page load
+            updateCounter();
         }
 
         setupCharCounter('description', 'desc-counter', 50);
@@ -540,6 +618,17 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
             const responsibilities = document.getElementById('responsibilities').value.trim();
             const status = document.getElementById('status').value;
 
+            console.log('Validation check:', {
+                title: title.length,
+                department: department,
+                location: location,
+                employmentType: employmentType,
+                description: description.length,
+                requirements: requirements.length,
+                responsibilities: responsibilities.length,
+                status: status
+            });
+
             const isValid = title.length >= 3 &&
                 department &&
                 location &&
@@ -550,8 +639,18 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
                 status;
 
             const submitBtn = document.getElementById('submit-btn');
-            submitBtn.disabled = !isValid;
-            submitBtn.style.opacity = isValid ? '1' : '0.6';
+            
+            console.log('Form is valid:', isValid);
+            
+            if (isValid) {
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = 'pointer';
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.6';
+                submitBtn.style.cursor = 'not-allowed';
+            }
         }
 
         // Add event listeners for validation
@@ -609,23 +708,38 @@ $departments = !empty($existing_departments) ? $existing_departments : $predefin
 
         // Form submission confirmation
         document.getElementById('jobForm').addEventListener('submit', function (e) {
+            console.log('Form submission triggered');
+            
+            // Check if submit button is disabled
+            const submitBtn = document.getElementById('submit-btn');
+            if (submitBtn.disabled) {
+                console.log('Form submission blocked - button is disabled');
+                e.preventDefault();
+                return false;
+            }
+            
             const status = document.getElementById('status').value;
 
             if (status === 'active') {
                 if (!confirm('This will publish the job posting and make it visible to the public. Are you sure?')) {
                     e.preventDefault();
-                    return;
+                    return false;
                 }
             }
 
-            // Show loading state
-            const submitBtn = document.getElementById('submit-btn');
-            submitBtn.disabled = true;
+            // Show loading state but don't disable until form is actually submitting
+            console.log('Form validation passed, submitting...');
             submitBtn.textContent = '⏳ Creating Job...';
+            
+            // Allow form to submit
+            return true;
         });
+
 
         // Initialize form validation
         updateSubmitButton();
+        
+        
     </script>
 </body>
 

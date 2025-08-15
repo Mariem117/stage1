@@ -1,26 +1,126 @@
 <?php
 require_once 'config.php';
 
-$error = '';
-$success = '';
+// Get job ID from URL
+$job_id = $_GET['id'] ?? 0;
 
-// Handle success/error messages
-if (isset($_GET['success'])) {
-    $success = 'Application submitted successfully! We will review your application and contact you soon.';
-}
-if (isset($_GET['error'])) {
-    $error = htmlspecialchars($_GET['error']);
-}
-
-// Get job posting ID
-if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+if (!$job_id) {
     header('Location: jobs.php');
     exit();
 }
 
-$job_id = (int) $_GET['id'];
+// Handle form submission
+if ($_POST['action'] ?? '' === 'apply') {
+    $errors = [];
+    $success = false;
 
-// Fetch job posting details
+    // Validate CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = 'Invalid security token. Please try again.';
+    } else {
+        // Validate form data
+        $applicant_name = sanitize($_POST['applicant_name'] ?? '');
+        $applicant_email = sanitize($_POST['applicant_email'] ?? '');
+        $applicant_phone = sanitize($_POST['applicant_phone'] ?? '');
+        $cover_letter = sanitize($_POST['cover_letter'] ?? '');
+        $years_experience = (int) ($_POST['years_experience'] ?? 0);
+        $expected_salary = floatval($_POST['expected_salary'] ?? 0);
+        $availability_date = $_POST['availability_date'] ?? '';
+
+        // Basic validation
+        if (empty($applicant_name)) {
+            $errors[] = 'Full name is required.';
+        }
+        if (empty($applicant_email) || !filter_var($applicant_email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Valid email address is required.';
+        }
+        if (empty($cover_letter)) {
+            $errors[] = 'Cover letter is required.';
+        }
+        if (strlen($cover_letter) < 50) {
+            $errors[] = 'Cover letter must be at least 50 characters long.';
+        }
+
+        // Check if user already applied for this job
+        $existing_stmt = $pdo->prepare("SELECT id FROM job_applications WHERE job_posting_id = ? AND applicant_email = ?");
+        $existing_stmt->execute([$job_id, $applicant_email]);
+        if ($existing_stmt->fetch()) {
+            $errors[] = 'You have already applied for this position.';
+        }
+
+        // Handle resume upload
+        $resume_path = null;
+        if (isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
+            $upload_result = handleFileUpload($_FILES['resume'], 'uploads/resumes/');
+            if ($upload_result['success']) {
+                $resume_path = $upload_result['path'];
+            } else {
+                $errors[] = 'Resume upload failed: ' . $upload_result['error'];
+            }
+        } else if ($_FILES['resume']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $errors[] = 'Resume upload is required.';
+        }
+
+        // If no errors, save the application
+        if (empty($errors)) {
+            try {
+                // Generate application number
+                $application_number = 'APP-' . date('Y') . '-' . str_pad(rand(1, 999999), 6, '0', STR_PAD_LEFT);
+
+                // Make sure application number is unique
+                $check_stmt = $pdo->prepare("SELECT id FROM job_applications WHERE application_number = ?");
+                while (true) {
+                    $check_stmt->execute([$application_number]);
+                    if (!$check_stmt->fetch())
+                        break;
+                    $application_number = 'APP-' . date('Y') . '-' . str_pad(rand(1, 999999), 6, '0', STR_PAD_LEFT);
+                }
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO job_applications (
+                        job_posting_id, applicant_name, applicant_email, applicant_phone,
+                        cover_letter, resume_path, years_experience, expected_salary,
+                        availability_date, application_number
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+
+                $stmt->execute([
+                    $job_id,
+                    $applicant_name,
+                    $applicant_email,
+                    $applicant_phone,
+                    $cover_letter,
+                    $resume_path,
+                    $years_experience,
+                    $expected_salary > 0 ? $expected_salary : null,
+                    !empty($availability_date) ? $availability_date : null,
+                    $application_number
+                ]);
+
+                $success = true;
+
+                // Create notification for admins
+                $job_title_stmt = $pdo->prepare("SELECT title FROM job_postings WHERE id = ?");
+                $job_title_stmt->execute([$job_id]);
+                $job_title = $job_title_stmt->fetchColumn();
+
+                notifyAllAdmins(
+                    $pdo,
+                    'job_application',
+                    'New Job Application',
+                    "New application received for {$job_title} from {$applicant_name}",
+                    $job_id
+                );
+
+            } catch (Exception $e) {
+                error_log("Job application error: " . $e->getMessage());
+                $errors[] = 'An error occurred while submitting your application. Please try again.';
+            }
+        }
+    }
+}
+
+// Fetch job details
 $stmt = $pdo->prepare("
     SELECT jp.*, u.username as posted_by_name
     FROM job_postings jp
@@ -37,175 +137,6 @@ if (!$job) {
 
 // Check if application deadline has passed
 $deadline_passed = $job['application_deadline'] && strtotime($job['application_deadline']) < time();
-
-// Handle application submission
-if ($_POST && isset($_POST['submit_application']) && verifyCSRFToken($_POST['csrf_token'])) {
-    if ($deadline_passed) {
-        header('Location: job_detail.php?id=' . $job_id . '&error=Application deadline has passed');
-        exit();
-    }
-
-    $applicant_name = sanitize($_POST['applicant_name']);
-    $applicant_email = sanitize($_POST['applicant_email']);
-    $applicant_phone = sanitize($_POST['applicant_phone']);
-    $cover_letter = sanitize($_POST['cover_letter']);
-    $years_experience = !empty($_POST['years_experience']) ? (int) $_POST['years_experience'] : null;
-    $expected_salary = !empty($_POST['expected_salary']) ? (float) $_POST['expected_salary'] : null;
-    $availability_date = !empty($_POST['availability_date']) ? $_POST['availability_date'] : null;
-
-    // Validation
-    $validation_errors = [];
-
-    if (empty($applicant_name) || strlen($applicant_name) < 2) {
-        $validation_errors[] = 'Name must be at least 2 characters long';
-    }
-
-    if (empty($applicant_email) || !filter_var($applicant_email, FILTER_VALIDATE_EMAIL)) {
-        $validation_errors[] = 'Valid email address is required';
-    }
-
-    if (empty($cover_letter) || strlen($cover_letter) < 50) {
-        $validation_errors[] = 'Cover letter must be at least 50 characters long';
-    }
-
-    // Check for duplicate application
-    $duplicate_check = $pdo->prepare("SELECT id FROM job_applications WHERE job_posting_id = ? AND applicant_email = ?");
-    $duplicate_check->execute([$job_id, $applicant_email]);
-    if ($duplicate_check->fetch()) {
-        $validation_errors[] = 'You have already applied for this position';
-    }
-
-    // Handle file upload (resume)
-    $resume_path = null;
-    if (isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
-        $file = $_FILES['resume'];
-        $allowed_types = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        $max_size = 5 * 1024 * 1024; // 5MB
-
-        if (!in_array($file['type'], $allowed_types)) {
-            $validation_errors[] = 'Resume must be PDF, DOC, or DOCX format';
-        } elseif ($file['size'] > $max_size) {
-            $validation_errors[] = 'Resume file size must be less than 5MB';
-        } else {
-            $upload_dir = 'uploads/resumes/';
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-            $filename = uniqid() . '_' . sanitize_file_name($file['name']);
-            $resume_path = $upload_dir . $filename;
-
-            if (!move_uploaded_file($file['tmp_name'], $resume_path)) {
-                $validation_errors[] = 'Failed to upload resume';
-                $resume_path = null;
-            }
-        }
-    } else {
-        $validation_errors[] = 'Resume is required';
-    }
-
-    if (empty($validation_errors)) {
-        // Add after validation but before database insert
-        debugLog("Submitting job application", [
-            'job_id' => $job_id,
-            'applicant_name' => $applicant_name,
-            'applicant_email' => $applicant_email,
-            'post_data' => $_POST,
-            'files' => $_FILES
-        ]);
-
-        // Add try-catch around the insert
-        try {
-            $pdo->beginTransaction();
-
-            // Generate unique application number
-            $application_number = 'APP-' . date('Y') . '-' . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
-
-            // Check if application number exists (very unlikely but safe)
-            while (true) {
-                $check_stmt = $pdo->prepare("SELECT id FROM job_applications WHERE application_number = ?");
-                $check_stmt->execute([$application_number]);
-                if (!$check_stmt->fetch())
-                    break;
-                $application_number = 'APP-' . date('Y') . '-' . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
-            }
-
-            $stmt = $pdo->prepare("
-                INSERT INTO job_applications (
-                    job_posting_id, applicant_name, applicant_email, applicant_phone,
-                    cover_letter, resume_path, years_experience, expected_salary,
-                    availability_date, application_number
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $result = $stmt->execute([
-                $job_id,
-                $applicant_name,
-                $applicant_email,
-                $applicant_phone,
-                $cover_letter,
-                $resume_path,
-                $years_experience,
-                $expected_salary,
-                $availability_date,
-                $application_number
-            ]);
-            debugLog("Job application insert result", $result);
-            $application_id = $pdo->lastInsertId();
-            debugLog("New application ID", $application_id);
-
-            // Notify all admins about new application
-            $admin_stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'admin'");
-            $admin_stmt->execute();
-            $admin_ids = $admin_stmt->fetchAll(PDO::FETCH_COLUMN);
-
-            foreach ($admin_ids as $admin_id) {
-                $notification_stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, title, message, related_id)
-                    VALUES (?, 'new_application', ?, ?, ?)
-                ");
-                $notification_stmt->execute([
-                    $admin_id,
-                    "New Job Application",
-                    "New application received for {$job['title']} from {$applicant_name}",
-                    $application_id
-                ]);
-            }
-
-            $pdo->commit();
-            header('Location: job_detail.php?id=' . $job_id . '&success=1');
-            exit();
-
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            if ($resume_path && file_exists($resume_path)) {
-                unlink($resume_path);
-            }
-            debugLog("Job application insert failed", $e->getMessage());
-            $error = 'Failed to submit application: ' . $e->getMessage();
-        }
-    } else {
-        if ($resume_path && file_exists($resume_path)) {
-            unlink($resume_path);
-        }
-        $error = implode(' | ', $validation_errors);
-    }
-}
-
-// Track job view (optional analytics)
-try {
-    $view_stmt = $pdo->prepare("
-        INSERT INTO job_posting_views (job_posting_id, ip_address, user_agent)
-        VALUES (?, ?, ?)
-    ");
-    $view_stmt->execute([
-        $job_id,
-        $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-        $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
-    ]);
-} catch (Exception $e) {
-    // Silently fail - analytics shouldn't break the page
-}
 ?>
 
 <!DOCTYPE html>
@@ -214,90 +145,73 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($job['title']); ?> - Career Opportunity</title>
+    <title><?php echo htmlspecialchars($job['title']); ?> - Job Details</title>
+    <link rel="stylesheet" href="job_detail.css">
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #a70202 0%, #000000 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .navbar {
-            background: white;
-            padding-top: 15px;
-            padding-bottom: 15px;
-            padding-left: 0;
-            padding-right: 0;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        .navbar-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .navbar-brand {
-            font-size: 24px;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .navbar-nav {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            margin-left: auto;
-        }
-
-        .nav-link {
-            color: #333;
-            text-decoration: none;
-            font-size: 16px;
-            transition: color 0.3s;
-        }
-
-        .nav-link:hover {
-            color: #a70202;
-        }
-
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #764ba2;
         }
 
         .job-header {
             background: white;
-            padding: 30px;
             border-radius: 15px;
-            margin-bottom: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .job-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
         }
 
         .job-title {
             font-size: 2.2em;
             color: #333;
             margin-bottom: 15px;
+            font-weight: bold;
         }
 
-        .job-meta {
-            display: flex;
-            flex-wrap: wrap;
+        .job-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
             margin-bottom: 20px;
-            font-size: 16px;
-            color: #666;
         }
 
-        .job-meta span {
+        .meta-item {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            color: #666;
+            font-size: 15px;
+        }
+
+        .meta-icon {
+            font-size: 18px;
         }
 
         .job-type-badge {
@@ -307,6 +221,7 @@ try {
             font-size: 14px;
             font-weight: bold;
             text-transform: uppercase;
+            margin-bottom: 20px;
         }
 
         .type-full_time {
@@ -329,46 +244,83 @@ try {
             color: #388e3c;
         }
 
-        .job-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
+        .deadline-warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px 20px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
             margin-bottom: 20px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
         }
 
-        .content-section {
-            margin-bottom: 25px;
+        .deadline-passed {
+            background: #f8d7da;
+            color: #721c24;
+            border-left-color: #dc3545;
         }
 
-        .content-section h3 {
+        .job-content {
+            display: block;
+        }
+
+        .job-details {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .detail-section {
+            margin-bottom: 35px;
+        }
+
+        .detail-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 1.5em;
             color: #333;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
             margin-bottom: 15px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-content {
+            color: #555;
+            line-height: 1.7;
+        }
+
+        .section-content ul {
+            padding-left: 20px;
+        }
+
+        .section-content li {
+            margin-bottom: 8px;
         }
 
         .application-form {
             background: white;
-            padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            margin: 0 auto;
         }
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 32px;
-            margin-bottom: 15px;
+        .form-title {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 25px;
+            text-align: center;
+            font-weight: bold;
         }
 
         .form-group {
-            margin: 20px;
-
-        }
-
-        .form-group.full-width {
-            grid-column: 1 / -1;
+            margin-bottom: 20px;
         }
 
         .form-group label {
@@ -378,71 +330,73 @@ try {
             color: #333;
         }
 
-        .required {
-            color: #dc3545;
-        }
-
         .form-group input,
-        .form-group textarea,
-        .form-group select {
+        .form-group select,
+        .form-group textarea {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #e1e5e9;
             border-radius: 8px;
             font-size: 14px;
             transition: border-color 0.3s ease;
         }
 
         .form-group input:focus,
-        .form-group textarea:focus,
-        .form-group select:focus {
+        .form-group select:focus,
+        .form-group textarea:focus {
             outline: none;
             border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .form-group textarea {
-            min-height: 120px;
             resize: vertical;
+            min-height: 120px;
         }
 
-        .file-upload {
+        .file-input-wrapper {
             position: relative;
+            overflow: hidden;
             display: inline-block;
-            cursor: pointer;
             width: 100%;
         }
 
-        .file-upload-input {
+        .file-input {
             position: absolute;
             left: -9999px;
         }
 
-        .file-upload-label {
-            display: block;
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
             padding: 12px;
             border: 2px dashed #ccc;
             border-radius: 8px;
-            text-align: center;
+            cursor: pointer;
             transition: all 0.3s ease;
-            background: #f8f9fa;
+            background: #f9f9f9;
+            color: #666;
         }
 
-        .file-upload-label:hover {
+        .file-input-label:hover {
             border-color: #667eea;
-            background: #f0f4ff;
+            background: #f0f2ff;
+            color: #667eea;
         }
 
         .submit-btn {
             background: linear-gradient(45deg, #667eea, #764ba2);
             color: white;
-            padding: 15px 40px;
+            padding: 15px 30px;
             border: none;
-            border-radius: 30px;
+            border-radius: 25px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s ease;
             width: 100%;
+            transition: all 0.3s ease;
         }
 
         .submit-btn:hover {
@@ -454,63 +408,33 @@ try {
             background: #ccc;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
         }
 
-        .back-btn {
-            background: #6c757d;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            text-decoration: none;
-            display: inline-block;
-            margin-bottom: 20px;
-        }
-
-        .alert {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .alert-error {
+        .error-message {
             background: #f8d7da;
             color: #721c24;
-            border: 1px solid #f5c6cb;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
         }
 
-        .alert-success {
+        .success-message {
             background: #d4edda;
             color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .deadline-warning {
-            background: #fff3cd;
-            color: #856404;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
-            font-weight: bold;
         }
 
-        .salary-range {
-            background: #e8f5e8;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            text-align: center;
+        .required {
+            color: #dc3545;
         }
 
-        .logo {
-            height: 50px;
-        }
-
-        @media (max-width: 700px) {
-            .form-grid {
+        @media (max-width: 768px) {
+            .job-meta-grid {
                 grid-template-columns: 1fr;
-                gap: 20px;
             }
         }
     </style>
@@ -522,7 +446,7 @@ try {
             <img src="logo.png" alt="Logo" class="logo">
             <div class="navbar-nav">
                 <a href="index.php" class="nav-link">Home</a>
-                <a href="jobs.php" class="nav-link">All Jobs</a>
+                <a href="jobs.php" class="nav-link">Careers</a>
                 <a href="login.php" class="nav-link">Employee Login</a>
             </div>
         </div>
@@ -530,212 +454,203 @@ try {
 
     <div class="container">
 
-        <?php if ($error): ?>
-            <div class="alert alert-error"><?php echo $error; ?></div>
-        <?php endif; ?>
-        <?php if ($success): ?>
-            <div class="alert alert-success"><?php echo $success; ?></div>
-        <?php endif; ?>
-
-        <!-- Job Details -->
+        <!-- Job Header -->
         <div class="job-header">
-            <h1 class="job-title"><?php echo htmlspecialchars($job['title']); ?></h1>
-
-            <div class="job-meta">
-                <span>🏢 <?php echo htmlspecialchars($job['department']); ?></span>
-                <span>📍 <?php echo htmlspecialchars($job['location']); ?></span>
-                <span>📅 Posted <?php echo date('F j, Y', strtotime($job['created_at'])); ?></span>
-            </div>
-
             <div class="job-type-badge type-<?php echo $job['employment_type']; ?>">
                 <?php echo ucfirst(str_replace('_', ' ', $job['employment_type'])); ?>
             </div>
 
-            <?php if ($job['salary_min'] && $job['salary_max']): ?>
-                <div class="salary-range">
-                    💰 Salary: <?php echo number_format($job['salary_min']); ?> -
-                    <?php echo number_format($job['salary_max']); ?>     <?php echo $job['currency']; ?>
-                </div>
-            <?php endif; ?>
+            <h1 class="job-title"><?php echo htmlspecialchars($job['title']); ?></h1>
 
-            <?php if ($job['application_deadline']): ?>
-                <?php if ($deadline_passed): ?>
-                    <div class="deadline-warning" style="background: #f8d7da; color: #721c24;">
-                        ⏰ Application deadline has passed
-                        (<?php echo date('F j, Y', strtotime($job['application_deadline'])); ?>)
-                    </div>
-                <?php else: ?>
-                    <div class="deadline-warning">
-                        ⏰ Application Deadline: <?php echo date('F j, Y', strtotime($job['application_deadline'])); ?>
+            <div class="job-meta-grid">
+                <div class="meta-item">
+                    <span class="meta-icon">🏢</span>
+                    <span><?php echo htmlspecialchars($job['department']); ?></span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-icon">📍</span>
+                    <span><?php echo htmlspecialchars($job['location']); ?></span>
+                </div>
+                <?php if ($job['salary_min'] && $job['salary_max']): ?>
+                    <div class="meta-item">
+                        <span class="meta-icon">💰</span>
+                        <span><?php echo number_format($job['salary_min']); ?> -
+                            <?php echo number_format($job['salary_max']); ?>     <?php echo $job['currency']; ?></span>
                     </div>
                 <?php endif; ?>
-            <?php endif; ?>
-        </div>
-
-        <!-- Job Content -->
-        <div class="job-content">
-            <div class="content-section">
-                <h3>Job Description</h3>
-                <p><?php echo nl2br(htmlspecialchars($job['description'])); ?></p>
+                <div class="meta-item">
+                    <span class="meta-icon">📅</span>
+                    <span>Posted <?php echo date('M j, Y', strtotime($job['created_at'])); ?></span>
+                </div>
             </div>
 
-            <div class="content-section">
-                <h3>Key Responsibilities</h3>
-                <p><?php echo nl2br(htmlspecialchars($job['responsibilities'])); ?></p>
-            </div>
-
-            <div class="content-section">
-                <h3>Requirements</h3>
-                <p><?php echo nl2br(htmlspecialchars($job['requirements'])); ?></p>
-            </div>
-
-            <?php if ($job['benefits']): ?>
-                <div class="content-section">
-                    <h3>Benefits & Perks</h3>
-                    <p><?php echo nl2br(htmlspecialchars($job['benefits'])); ?></p>
+            <?php if ($job['application_deadline']): ?>
+                <div class="deadline-warning <?php echo $deadline_passed ? 'deadline-passed' : ''; ?>">
+                    <strong>
+                        <?php if ($deadline_passed): ?>
+                            ⚠️ Application deadline has passed
+                            (<?php echo date('F j, Y', strtotime($job['application_deadline'])); ?>)
+                        <?php else: ?>
+                            ⏰ Application deadline: <?php echo date('F j, Y', strtotime($job['application_deadline'])); ?>
+                        <?php endif; ?>
+                    </strong>
                 </div>
             <?php endif; ?>
         </div>
 
-        <!-- Application Form -->
-        <?php if (!$deadline_passed): ?>
+        <div class="job-content">
+            <!-- Job Details -->
+            <div class="job-details">
+                <div class="detail-section">
+                    <h3 class="section-title">
+                        <span>📋</span> Job Description
+                    </h3>
+                    <div class="section-content">
+                        <?php echo nl2br(htmlspecialchars($job['description'])); ?>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3 class="section-title">
+                        <span>✅</span> Requirements
+                    </h3>
+                    <div class="section-content">
+                        <?php echo nl2br(htmlspecialchars($job['requirements'])); ?>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3 class="section-title">
+                        <span>🎯</span> Responsibilities
+                    </h3>
+                    <div class="section-content">
+                        <?php echo nl2br(htmlspecialchars($job['responsibilities'])); ?>
+                    </div>
+                </div>
+
+                <?php if ($job['benefits']): ?>
+                    <div class="detail-section">
+                        <h3 class="section-title">
+                            <span>🎁</span> Benefits
+                        </h3>
+                        <div class="section-content">
+                            <?php echo nl2br(htmlspecialchars($job['benefits'])); ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Application Form -->
             <div class="application-form">
-                <h2>Apply for This Position</h2>
-                <p>Ready to join our team? Fill out the application form below:</p>
+                <h3 class="form-title">Apply for this Position</h3>
 
-                <form method="POST" action="" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                <?php if (isset($success) && $success): ?>
+                    <div class="success-message">
+                        <strong>🎉 Application Submitted Successfully!</strong><br>
+                        Thank you for your interest. We'll review your application and get back to you soon.
+                    </div>
+                <?php elseif ($deadline_passed): ?>
+                    <div class="error-message">
+                        <strong>Application Deadline Passed</strong><br>
+                        Unfortunately, the application deadline for this position has passed.
+                    </div>
+                <?php else: ?>
+                    <?php if (!empty($errors)): ?>
+                        <div class="error-message">
+                            <strong>Please fix the following errors:</strong><br>
+                            <?php foreach ($errors as $error): ?>
+                                • <?php echo htmlspecialchars($error); ?><br>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
 
-                    <div class="form-grid">
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="apply">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+
                         <div class="form-group">
                             <label for="applicant_name">Full Name <span class="required">*</span></label>
-                            <input type="text" id="applicant_name" name="applicant_name" required>
+                            <input type="text" id="applicant_name" name="applicant_name"
+                                value="<?php echo htmlspecialchars($_POST['applicant_name'] ?? ''); ?>" required>
                         </div>
+
                         <div class="form-group">
                             <label for="applicant_email">Email Address <span class="required">*</span></label>
-                            <input type="email" id="applicant_email" name="applicant_email" required>
+                            <input type="email" id="applicant_email" name="applicant_email"
+                                value="<?php echo htmlspecialchars($_POST['applicant_email'] ?? ''); ?>" required>
                         </div>
-                    </div>
 
-                    <div class="form-grid">
                         <div class="form-group">
                             <label for="applicant_phone">Phone Number</label>
-                            <input type="tel" id="applicant_phone" name="applicant_phone">
+                            <input type="tel" id="applicant_phone" name="applicant_phone"
+                                value="<?php echo htmlspecialchars($_POST['applicant_phone'] ?? ''); ?>">
                         </div>
+
                         <div class="form-group">
                             <label for="years_experience">Years of Experience</label>
-                            <input type="number" id="years_experience" name="years_experience" min="0" max="50">
+                            <select id="years_experience" name="years_experience">
+                                <option value="0" <?php echo ($_POST['years_experience'] ?? '') == '0' ? 'selected' : ''; ?>>
+                                    0-1 years</option>
+                                <option value="2" <?php echo ($_POST['years_experience'] ?? '') == '2' ? 'selected' : ''; ?>>
+                                    2-3 years</option>
+                                <option value="4" <?php echo ($_POST['years_experience'] ?? '') == '4' ? 'selected' : ''; ?>>
+                                    4-5 years</option>
+                                <option value="6" <?php echo ($_POST['years_experience'] ?? '') == '6' ? 'selected' : ''; ?>>
+                                    6-10 years</option>
+                                <option value="11" <?php echo ($_POST['years_experience'] ?? '') == '11' ? 'selected' : ''; ?>>10+ years</option>
+                            </select>
                         </div>
-                    </div>
 
-                    <div class="form-grid">
+                        <?php if ($job['salary_min'] || $job['salary_max']): ?>
+                            <div class="form-group">
+                                <label for="expected_salary">Expected Salary (<?php echo $job['currency']; ?>)</label>
+                                <input type="number" id="expected_salary" name="expected_salary"
+                                    value="<?php echo htmlspecialchars($_POST['expected_salary'] ?? ''); ?>" min="0"
+                                    step="1000">
+                            </div>
+                        <?php endif; ?>
+
                         <div class="form-group">
-                            <label for="expected_salary">Expected Salary (<?php echo $job['currency']; ?>)</label>
-                            <input type="number" id="expected_salary" name="expected_salary" min="0" step="1000">
-                        </div>
-                        <div class="form-group">
-                            <label for="availability_date">Availability Date</label>
+                            <label for="availability_date">Available Start Date</label>
                             <input type="date" id="availability_date" name="availability_date"
+                                value="<?php echo htmlspecialchars($_POST['availability_date'] ?? ''); ?>"
                                 min="<?php echo date('Y-m-d'); ?>">
                         </div>
-                    </div>
 
-                    <div class="form-group full-width">
-                        <label for="resume">Resume <span class="required">*</span></label>
-                        <div class="file-upload">
-                            <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" class="file-upload-input"
-                                required>
-                            <label for="resume" class="file-upload-label">
-                                📄 Click to upload your resume (PDF, DOC, DOCX - Max 5MB)
-                            </label>
+                        <div class="form-group">
+                            <label for="resume">Resume <span class="required">*</span></label>
+                            <div class="file-input-wrapper">
+                                <input type="file" id="resume" name="resume" class="file-input" accept=".pdf,.doc,.docx"
+                                    required>
+                                <label for="resume" class="file-input-label">
+                                    <span>📎</span> Choose Resume File (PDF, DOC, DOCX)
+                                </label>
+                            </div>
                         </div>
-                        <div id="file-name" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
-                    </div>
 
-                    <div class="form-group full-width">
-                        <label for="cover_letter">Cover Letter <span class="required">*</span></label>
-                        <textarea id="cover_letter" name="cover_letter" required
-                            placeholder="Tell us why you're interested in this position and what makes you a great fit..."></textarea>
-                        <div id="char-count" style="text-align: right; font-size: 12px; color: #666; margin-top: 5px;">0
-                            characters (minimum 50)</div>
-                    </div>
+                        <div class="form-group">
+                            <label for="cover_letter">Cover Letter <span class="required">*</span></label>
+                            <textarea id="cover_letter" name="cover_letter" required
+                                placeholder="Tell us why you're interested in this position and why you'd be a great fit..."><?php echo htmlspecialchars($_POST['cover_letter'] ?? ''); ?></textarea>
+                        </div>
 
-                    <button type="submit" name="submit_application" class="submit-btn" id="submit-btn">
-                        🚀 Submit Application
-                    </button>
-                </form>
+                        <button type="submit" class="submit-btn">Submit Application</button>
+                    </form>
+                <?php endif; ?>
             </div>
-        <?php else: ?>
-            <div class="application-form">
-                <h2>Application Period Closed</h2>
-                <p>Unfortunately, the application deadline for this position has passed. Please check our other <a
-                        href="jobs.php">available positions</a>.</p>
-            </div>
-        <?php endif; ?>
+        </div>
     </div>
 
     <script>
-        // File upload feedback
-        document.getElementById('resume').addEventListener('change', function () {
-            const fileName = this.files[0] ? this.files[0].name : '';
-            const fileNameDiv = document.getElementById('file-name');
-            const label = document.querySelector('.file-upload-label');
-
+        // File input enhancement
+        document.getElementById('resume').addEventListener('change', function (e) {
+            const label = document.querySelector('.file-input-label');
+            const fileName = e.target.files[0]?.name;
             if (fileName) {
-                fileNameDiv.textContent = '✅ Selected: ' + fileName;
-                label.style.borderColor = '#28a745';
-                label.style.backgroundColor = '#e8f5e8';
-            } else {
-                fileNameDiv.textContent = '';
-                label.style.borderColor = '#ccc';
-                label.style.backgroundColor = '#f8f9fa';
+                label.innerHTML = `<span>📎</span> ${fileName}`;
+                label.style.color = '#667eea';
             }
         });
-
-        // Cover letter character count
-        document.getElementById('cover_letter').addEventListener('input', function () {
-            const charCount = this.value.length;
-            const countDiv = document.getElementById('char-count');
-            const submitBtn = document.getElementById('submit-btn');
-
-            countDiv.textContent = charCount + ' characters (minimum 50)';
-
-            if (charCount < 50) {
-                countDiv.style.color = '#dc3545';
-                submitBtn.disabled = true;
-                submitBtn.textContent = '✍️ Cover letter too short';
-            } else {
-                countDiv.style.color = '#28a745';
-                submitBtn.disabled = false;
-                submitBtn.textContent = '🚀 Submit Application';
-            }
-        });
-
-        // Form validation
-        document.querySelector('form').addEventListener('submit', function (e) {
-            const coverLetter = document.getElementById('cover_letter').value;
-            const resume = document.getElementById('resume').files[0];
-
-            if (coverLetter.length < 50) {
-                e.preventDefault();
-                alert('Cover letter must be at least 50 characters long.');
-                return;
-            }
-
-            if (!resume) {
-                e.preventDefault();
-                alert('Please upload your resume.');
-                return;
-            }
-
-            // Show loading state
-            const submitBtn = document.getElementById('submit-btn');
-            submitBtn.disabled = true;
-            submitBtn.textContent = '📤 Submitting...';
-        });
-
-        // Initialize character count
-        document.getElementById('cover_letter').dispatchEvent(new Event('input'));
     </script>
 </body>
 

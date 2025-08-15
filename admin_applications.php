@@ -140,8 +140,8 @@ if ($_POST && isset($_POST['update_application_status']) && verifyCSRFToken($_PO
         // Record status change in history
         if ($current_app['status'] !== $new_status) {
             $history_stmt = $pdo->prepare("
-                INSERT INTO job_application_status_history (application_id, old_status, new_status, changed_by, notes)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO job_application_status_history (application_id, old_status, new_status, changed_by, notes, created_at)
+                VALUES (?, ?, ?, ?, ?, NOW())
             ");
             $history_stmt->execute([
                 $application_id,
@@ -557,8 +557,6 @@ if ($_POST && isset($_POST['update_application_status']) && verifyCSRFToken($_PO
                                 ✏️ Update Status
                             </button>
                             
-                            <a href="mailto:<?php echo htmlspecialchars($application['applicant_email']); ?>" 
-                               class="btn btn-success btn-small">📧 Email Applicant</a>
                         </div>
 
                         <!-- Status Update Form -->

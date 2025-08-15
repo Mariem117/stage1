@@ -5,102 +5,113 @@ USE employee_management;
 --- Users table (for both admin and employees)
 CREATE TABLE users
 (
-    id INT
-    AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR
-    (50) UNIQUE NOT NULL,
-    email VARCHAR
-    (100) UNIQUE NOT NULL,
-    password VARCHAR
-    (255) NOT NULL,
-    role ENUM
-    ('admin', 'employee') DEFAULT 'employee',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
-    UPDATE CURRENT_TIMESTAMP
-    );
-
-    -- Employee profiles table with all requested attributes
-    CREATE TABLE employee_profiles
-    (
         id INT
         AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR
+        (50) UNIQUE NOT NULL,
+    email VARCHAR
+        (100) UNIQUE NOT NULL,
+    password VARCHAR
+        (255) NOT NULL,
+    role ENUM
+        ('admin', 'employee') DEFAULT 'employee',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+        UPDATE CURRENT_TIMESTAMP
+        );
+
+        -- Employee profiles table with all requested attributes
+        CREATE TABLE employee_profiles
+        (
+                id INT
+                AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     first_name VARCHAR
-        (50) NOT NULL,
+                (50) NOT NULL,
     last_name VARCHAR
-        (50) NOT NULL,
+                (50) NOT NULL,
     employee_id VARCHAR
-        (20) UNIQUE,
+                (20) UNIQUE,
     ncin VARCHAR
-        (8),
+                (8),
     cin_image VARCHAR
-        (255), -- Added for storing CIN image path
+                (255), -- Added for storing CIN image path
     cnss_first VARCHAR
-        (8),
+                (8),
     cnss_last VARCHAR
-        (2),
+                (2),
     department VARCHAR
-        (100),
+                (100),
     position VARCHAR
-        (100),
+                (100),
     phone VARCHAR
-        (20),
+                (20),
     address VARCHAR
-        (32),
+                (32),
     date_of_birth DATE,
     education VARCHAR
-        (100),
+                (100),
     has_driving_license BOOLEAN DEFAULT FALSE,
     driving_license_category VARCHAR
-        (50), -- Added for driving license category
+                (50), -- Added for driving license category
     driving_license_image VARCHAR
-        (255), -- Added for storing driving license image path
+                (255), -- Added for storing driving license image path
     gender ENUM
-        ('male', 'female') NOT NULL,
+                ('male', 'female') NOT NULL,
     factory INT,
     civil_status ENUM
-        ('single', 'married', 'divorced', 'widowed') DEFAULT 'single',
+                ('single', 'married', 'divorced', 'widowed') DEFAULT 'single',
     hire_date DATE,
     salary DECIMAL
-        (10,2),
+                (10,2),
     profile_picture VARCHAR
-        (255),
+                (255),
     status ENUM
-        ('active', 'inactive','dismissed') DEFAULT 'active',
+                ('active', 'inactive','dismissed') DEFAULT 'active',
         dismissal_reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
-        UPDATE CURRENT_TIMESTAMP,
+                UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY
-        (user_id) REFERENCES users
-        (id) ON
-        DELETE CASCADE
+                (user_id) REFERENCES users
+                (id) ON
+                DELETE CASCADE
 );
 
-        -- Children's table to store kids' names and dates of birth
-        CREATE TABLE employee_children
-        (
-            id INT
-            AUTO_INCREMENT PRIMARY KEY,
+                -- Children's table to store kids' names and dates of birth
+                CREATE TABLE employee_children
+                (
+                        id INT
+                        AUTO_INCREMENT PRIMARY KEY,
     employee_profile_id INT NOT NULL,
     child_first_name VARCHAR
-            (100) NOT NULL,
+                        (100) NOT NULL,
     child_second_name VARCHAR
-            (100) NOT NULL,
+                        (100) NOT NULL,
     child_date_of_birth DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
-            UPDATE CURRENT_TIMESTAMP,
+                        UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY
-            (employee_profile_id) REFERENCES employee_profiles
-            (id) ON
-            DELETE CASCADE
+                        (employee_profile_id) REFERENCES employee_profiles
+                        (id) ON
+                        DELETE CASCADE
 );
-            -- Add new tables for enhanced request management
-
-            -- 1. Request Comments/Conversation History
-            CREATE TABLE request_comments (
+                        CREATE TABLE time_records (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    employee_id VARCHAR
+                        (50),
+    check_in DATETIME,
+    check_out DATETIME,
+    device_id VARCHAR
+                        (100), -- ID de l'appareil Suprema
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY
+                        (employee_id) REFERENCES employee_profiles
+                        (employee_id)
+);
+                        -- 1. Request Comments/Conversation History
+                        CREATE TABLE request_comments (
     id INT PRIMARY KEY AUTO_INCREMENT,
     request_id INT NOT NULL,
     user_id INT NOT NULL,
@@ -108,296 +119,235 @@ CREATE TABLE users
     is_internal BOOLEAN DEFAULT FALSE COMMENT 'Internal admin notes not visible to employees',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
-            UPDATE CURRENT_TIMESTAMP,
+                        UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY
-            (request_id) REFERENCES employee_requests
-            (id) ON
-            DELETE CASCADE,
+                        (request_id) REFERENCES employee_requests
+                        (id) ON
+                        DELETE CASCADE,
     FOREIGN KEY (user_id)
-            REFERENCES users
-            (id) ON
-            DELETE CASCADE,
+                        REFERENCES users
+                        (id) ON
+                        DELETE CASCADE,
     INDEX idx_request_comments_request_id (request_id),
     INDEX idx_request_comments_created_at
-            (created_at)
+                        (created_at)
 );
 
-            -- 2. Request Attachments
-            CREATE TABLE request_attachments (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    request_id INT NOT NULL,
-    user_id INT NOT NULL COMMENT 'Who uploaded the file',
-    filename VARCHAR
-            (255) NOT NULL COMMENT 'Stored filename',
-    original_filename VARCHAR
-            (255) NOT NULL COMMENT 'Original filename',
-    file_size INT NOT NULL,
-    mime_type VARCHAR
-            (100) NOT NULL,
-    file_path VARCHAR
-            (500) NOT NULL,
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY
-            (request_id) REFERENCES employee_requests
-            (id) ON
-            DELETE CASCADE,
-    FOREIGN KEY (user_id)
-            REFERENCES users
-            (id) ON
-            DELETE CASCADE,
-    INDEX idx_request_attachments_request_id (request_id)
-            );
 
-            -- 3. Request Status History/Timeline
-            CREATE TABLE request_status_history (
+                        -- 3. Request Status History/Timeline
+                        CREATE TABLE request_status_history (
     id INT PRIMARY KEY AUTO_INCREMENT,
     request_id INT NOT NULL,
     old_status ENUM
-            ('pending', 'in_progress', 'completed', 'rejected') NULL,
+                        ('pending', 'in_progress', 'completed', 'rejected') NULL,
     new_status ENUM
-            ('pending', 'in_progress', 'completed', 'rejected') NOT NULL,
+                        ('pending', 'in_progress', 'completed', 'rejected') NOT NULL,
     changed_by INT NOT NULL,
     notes TEXT NULL COMMENT 'Optional notes about the status change',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY
-            (request_id) REFERENCES employee_requests
-            (id) ON
-            DELETE CASCADE,
+                        (request_id) REFERENCES employee_requests
+                        (id) ON
+                        DELETE CASCADE,
     FOREIGN KEY (changed_by)
-            REFERENCES users
-            (id) ON
-            DELETE CASCADE,
+                        REFERENCES users
+                        (id) ON
+                        DELETE CASCADE,
     INDEX idx_status_history_request_id (request_id),
     INDEX idx_status_history_created_at
-            (created_at)
+                        (created_at)
 );
 
-            -- 4. Request Assignment History
-            CREATE TABLE request_assignments (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    request_id INT NOT NULL,
-    assigned_from INT NULL COMMENT 'Previous assignee (NULL for initial assignment)',
-    assigned_to INT NULL COMMENT 'New assignee (NULL for unassignment)',
-    assigned_by INT NOT NULL COMMENT 'Who made the assignment',
-    notes TEXT NULL COMMENT 'Assignment notes',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY
-            (request_id) REFERENCES employee_requests
-            (id) ON
-            DELETE CASCADE,
-    FOREIGN KEY (assigned_from)
-            REFERENCES users
-            (id) ON
-            DELETE
-            SET NULL
-            ,
-    FOREIGN KEY
-            (assigned_to) REFERENCES users
-            (id) ON
-            DELETE
-            SET NULL
-            ,
-    FOREIGN KEY
-            (assigned_by) REFERENCES users
-            (id) ON
-            DELETE CASCADE,
-    INDEX idx_assignments_request_id (request_id),
-    INDEX idx_assignments_assigned_to
-            (assigned_to),
-    INDEX idx_assignments_created_at
-            (created_at)
-);
-
-            -- 5. Update employee_requests table to support assignments
-            ALTER TABLE employee_requests 
+                        -- 5. Update employee_requests table to support assignments
+                        ALTER TABLE employee_requests 
 ADD COLUMN assigned_to INT NULL AFTER admin_id,
-            ADD COLUMN request_number VARCHAR
-            (20) UNIQUE NULL AFTER id,
-            ADD COLUMN category VARCHAR
-            (50) DEFAULT 'general' AFTER priority,
-            ADD FOREIGN KEY
-            (assigned_to) REFERENCES users
-            (id) ON
-            DELETE
-            SET NULL;
+                        ADD COLUMN request_number VARCHAR
+                        (20) UNIQUE NULL AFTER id,
+                        ADD COLUMN category VARCHAR
+                        (50) DEFAULT 'general' AFTER priority,
+                        ADD FOREIGN KEY
+                        (assigned_to) REFERENCES users
+                        (id) ON
+                        DELETE
+                        SET NULL;
 
-            -- Add index for request number
-            ALTER TABLE employee_requests ADD INDEX idx_request_number (request_number);
+                        -- Add index for request number
+                        ALTER TABLE employee_requests ADD INDEX idx_request_number (request_number);
 
-            -- 6. Create triggers to automatically log status changes and assignments
+                        -- 6. Create triggers to automatically log status changes and assignments
 
-            DELIMITER //
+                        DELIMITER //
 
-            -- Trigger for status history
-            CREATE TRIGGER tr_request_status_history 
+                        -- Trigger for status history
+                        CREATE TRIGGER tr_request_status_history 
 AFTER
-            UPDATE ON employee_requests
+                        UPDATE ON employee_requests
 FOR EACH ROW
-            BEGIN
-                IF OLD.status != NEW.status THEN
-                INSERT INTO request_status_history
-                    (request_id, old_status, new_status, changed_by, notes)
-                VALUES
-                    (NEW.id, OLD.status, NEW.status, NEW.admin_id, 'Status updated');
-            END
-            IF;
+                        BEGIN
+                                IF OLD.status != NEW.status THEN
+                                INSERT INTO request_status_history
+                                        (request_id, old_status, new_status, changed_by, notes)
+                                VALUES
+                                        (NEW.id, OLD.status, NEW.status, NEW.admin_id, 'Status updated');
+                        END
+                        IF;
 END//
 
-            -- Trigger for assignment history
-            CREATE TRIGGER tr_request_assignment_history
+                        -- Trigger for assignment history
+                        CREATE TRIGGER tr_request_assignment_history
 AFTER
-            UPDATE ON employee_requests
+                        UPDATE ON employee_requests
 FOR EACH ROW
-            BEGIN
-                IF (OLD.assigned_to IS NULL AND NEW.assigned_to IS NOT NULL) OR
-                    (OLD.assigned_to IS NOT NULL AND NEW.assigned_to IS NULL) OR
-                    (OLD.assigned_to != NEW.assigned_to) THEN
-                INSERT INTO request_assignments
-                    (request_id, assigned_from, assigned_to, assigned_by, notes)
-                VALUES
-                    (NEW.id, OLD.assigned_to, NEW.assigned_to, NEW.admin_id, 'Assignment updated');
-            END
-            IF;
+                        BEGIN
+                                IF (OLD.assigned_to IS NULL AND NEW.assigned_to IS NOT NULL) OR
+                                        (OLD.assigned_to IS NOT NULL AND NEW.assigned_to IS NULL) OR
+                                        (OLD.assigned_to != NEW.assigned_to) THEN
+                                INSERT INTO request_assignments
+                                        (request_id, assigned_from, assigned_to, assigned_by, notes)
+                                VALUES
+                                        (NEW.id, OLD.assigned_to, NEW.assigned_to, NEW.admin_id, 'Assignment updated');
+                        END
+                        IF;
 END//
 
-            -- Trigger to generate request numbers
-            CREATE TRIGGER tr_request_number
+                        -- Trigger to generate request numbers
+                        CREATE TRIGGER tr_request_number
 BEFORE
-            INSERT ON
-            employee_requests
-            FOR
-            EACH
-            ROW
-            BEGIN
-                IF NEW.request_number IS NULL THEN
-                SET NEW
-                .request_number = CONCAT
-                ('REQ-', YEAR
-                (NOW
-                ()), '-', LPAD
-                (LAST_INSERT_ID
-                () + 1, 6, '0'));
-            END
-            IF;
+                        INSERT ON
+                        employee_requests
+                        FOR
+                        EACH
+                        ROW
+                        BEGIN
+                                IF NEW.request_number IS NULL THEN
+                                SET NEW
+                                .request_number = CONCAT
+                                ('REQ-', YEAR
+                                (NOW
+                                ()), '-', LPAD
+                                (LAST_INSERT_ID
+                                () + 1, 6, '0'));
+                        END
+                        IF;
 END//
-            CREATE TABLE job_postings (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    title VARCHAR
-            (255) NOT NULL,
-    department VARCHAR
-            (100) NOT NULL,
-    location VARCHAR
-            (255) NOT NULL,
-    employment_type ENUM
-            ('full_time', 'part_time', 'contract', 'internship') NOT NULL DEFAULT 'full_time',
-    salary_min DECIMAL
-            (10,2) NULL,
-    salary_max DECIMAL
-            (10,2) NULL,
-    currency VARCHAR
-            (3) DEFAULT 'USD',
-    description TEXT NOT NULL,
-    requirements TEXT NOT NULL,
-    responsibilities TEXT NOT NULL,
-    benefits TEXT NULL,
-    application_deadline DATE NULL,
-    status ENUM
-            ('draft', 'active', 'closed', 'filled') NOT NULL DEFAULT 'draft',
-    posted_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
-            UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY
-            (posted_by) REFERENCES users
-            (id) ON
-            DELETE CASCADE,
-    INDEX idx_status_deadline (status, application_deadline
-            ),
-    INDEX idx_department
-            (department),
-    INDEX idx_created_at
-            (created_at DESC)
+                        CREATE TABLE job_postings (
+id INT PRIMARY KEY AUTO_INCREMENT,
+title VARCHAR
+                        (255) NOT NULL,
+department VARCHAR
+                        (100) NOT NULL,
+location VARCHAR
+                        (255) NOT NULL,
+employment_type ENUM
+                        ('full_time', 'part_time', 'contract', 'internship') NOT NULL DEFAULT 'full_time',
+salary_min DECIMAL
+                        (10,2) NULL,
+salary_max DECIMAL
+                        (10,2) NULL,
+currency VARCHAR
+                        (3) DEFAULT 'USD',
+description TEXT NOT NULL,
+requirements TEXT NOT NULL,
+responsibilities TEXT NOT NULL,
+benefits TEXT NULL,
+application_deadline DATE NULL,
+status ENUM
+                        ('draft', 'active', 'closed', 'filled') NOT NULL DEFAULT 'draft',
+posted_by INT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+                        UPDATE CURRENT_TIMESTAMP,
+FOREIGN KEY
+                        (posted_by) REFERENCES users
+                        (id) ON
+                        DELETE CASCADE,
+INDEX idx_status_deadline (status, application_deadline
+                        ),
+INDEX idx_department
+                        (department),
+INDEX idx_created_at
+                        (created_at DESC)
 );
 
-            -- Job applications table
-            CREATE TABLE job_applications (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    job_posting_id INT NOT NULL,
-    applicant_name VARCHAR
-            (255) NOT NULL,
-    applicant_email VARCHAR
-            (255) NOT NULL,
-    applicant_phone VARCHAR
-            (20) NULL,
-    cover_letter TEXT NOT NULL,
-    resume_path VARCHAR
-            (500) NULL,
-    additional_documents TEXT NULL, -- JSON array of file paths
-    years_experience INT NULL,
-    expected_salary DECIMAL
-            (10,2) NULL,
-    availability_date DATE NULL,
-    status ENUM
-            ('submitted', 'under_review', 'shortlisted', 'interviewed', 'rejected', 'hired') NOT NULL DEFAULT 'submitted',
-    admin_notes TEXT NULL,
-    reviewed_by INT NULL,
-    reviewed_at TIMESTAMP NULL,
-    application_number VARCHAR
-            (20) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
-            UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY
-            (job_posting_id) REFERENCES job_postings
-            (id) ON
-            DELETE CASCADE,
-    FOREIGN KEY (reviewed_by)
-            REFERENCES users
-            (id) ON
-            DELETE
-            SET NULL
-            ,
-    INDEX idx_job_status
-            (job_posting_id, status),
-    INDEX idx_email
-            (applicant_email),
-    INDEX idx_created_at
-            (created_at DESC)
+                        -- Job applications table
+                        CREATE TABLE job_applications (
+id INT PRIMARY KEY AUTO_INCREMENT,
+job_posting_id INT NOT NULL,
+applicant_name VARCHAR
+                        (255) NOT NULL,
+applicant_email VARCHAR
+                        (255) NOT NULL,
+applicant_phone VARCHAR
+                        (20) NULL,
+cover_letter TEXT NOT NULL,
+resume_path VARCHAR
+                        (500) NULL,
+additional_documents TEXT NULL, -- JSON array of file paths
+years_experience INT NULL,
+expected_salary DECIMAL
+                        (10,2) NULL,
+availability_date DATE NULL,
+status ENUM
+                        ('submitted', 'under_review', 'shortlisted', 'interviewed', 'rejected', 'hired') NOT NULL DEFAULT 'submitted',
+admin_notes TEXT NULL,
+reviewed_by INT NULL,
+reviewed_at TIMESTAMP NULL,
+application_number VARCHAR
+                        (20) UNIQUE NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON
+                        UPDATE CURRENT_TIMESTAMP,
+FOREIGN KEY
+                        (job_posting_id) REFERENCES job_postings
+                        (id) ON
+                        DELETE CASCADE,
+FOREIGN KEY (reviewed_by)
+                        REFERENCES users
+                        (id) ON
+                        DELETE
+                        SET NULL
+                        ,
+INDEX idx_job_status
+                        (job_posting_id, status),
+INDEX idx_email
+                        (applicant_email),
+INDEX idx_created_at
+                        (created_at DESC)
 );
 
-            -- Job application status history
-            CREATE TABLE job_application_status_history (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    application_id INT NOT NULL,
-    old_status VARCHAR
-            (50) NULL,
-    new_status VARCHAR
-            (50) NOT NULL,
-    changed_by INT NOT NULL,
-    notes TEXT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY
-            (application_id) REFERENCES job_applications
-            (id) ON
-            DELETE CASCADE,
-    FOREIGN KEY (changed_by)
-            REFERENCES users
-            (id) ON
-            DELETE CASCADE
+                        -- Job application status history
+                        CREATE TABLE job_application_status_history (
+id INT PRIMARY KEY AUTO_INCREMENT,
+application_id INT NOT NULL,
+old_status VARCHAR
+                        (50) NULL,
+new_status VARCHAR
+                        (50) NOT NULL,
+changed_by INT NOT NULL,
+notes TEXT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY
+                        (application_id) REFERENCES job_applications
+                        (id) ON
+                        DELETE CASCADE,
+FOREIGN KEY (changed_by)
+                        REFERENCES users
+                        (id) ON
+                        DELETE CASCADE
 );
 
-            -- Job posting views/analytics (optional)
-            CREATE TABLE job_posting_views (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    job_posting_id INT NOT NULL,
-    ip_address VARCHAR
-            (45) NOT NULL,
-    user_agent TEXT NULL,
-    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY
-            (job_posting_id) REFERENCES job_postings
-            (id) ON
-            DELETE CASCADE,
-    INDEX idx_job_date (job_posting_id, viewed_at
-            )
+                        -- Job posting views/analytics (optional)
+                        CREATE TABLE job_posting_views (
+id INT PRIMARY KEY AUTO_INCREMENT,
+job_posting_id INT NOT NULL,
+ip_address VARCHAR
+                        (45) NOT NULL,
+user_agent TEXT NULL,
+viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY
+                        (job_posting_id) REFERENCES job_postings
+                        (id) ON
+                        DELETE CASCADE,
+INDEX idx_job_date (job_posting_id, viewed_at
+                        )
 );

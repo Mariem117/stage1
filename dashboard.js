@@ -80,57 +80,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Education Level Chart
-    const educationCtx = document.getElementById('educationChart');
-    if (educationCtx && typeof educationData !== 'undefined') {
-        const educationLabels = Object.keys(educationData);
-        const educationValues = Object.values(educationData);
-        
-        new Chart(educationCtx, {
-            type: 'bar',
-            data: {
-                labels: educationLabels,
-                datasets: [{
-                    label: 'Number of Employees',
-                    data: educationValues,
-                    backgroundColor: colors.secondary,
-                    borderColor: colors.secondary,
-                    borderWidth: 1,
-                    borderRadius: 6,
-                    hoverBackgroundColor: '#2f855a'
-                }]
-            },
-            options: {
-                ...commonOptions,
-                scales: {
-                    x: {
-                        ticks: {
-                            color: '#4a5568',
-                            font: {
-                                size: 11
-                            }
-                        },
-                        grid: {
-                            color: '#edf2f7'
-                        }
-                    },
-                    y: {
-                        ticks: {
-                            color: '#4a5568',
-                            font: {
-                                size: 11
-                            }
-                        },
-                        grid: {
-                            color: '#edf2f7'
-                        },
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-
     // Age Segmentation Chart
     const ageCtx = document.getElementById('ageChart');
     if (ageCtx && typeof ageData !== 'undefined') {
@@ -233,3 +182,4 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
