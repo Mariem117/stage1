@@ -127,6 +127,7 @@ function calculateAge($dateOfBirth)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Employee Listing - Employee Management System</title>
+    <link rel="stylesheet" href="responsive.css">
     <style>
         * {
             margin: 0;
@@ -611,6 +612,10 @@ function calculateAge($dateOfBirth)
 </head>
 
 <body>
+    <div id="loadingSpinner" class="loading" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+    <div id="alertContainer"></div>
     <nav class="navbar">
         <div class="navbar-container">
             <img src="logo.png" alt="Logo" class="logo">
@@ -635,6 +640,75 @@ function calculateAge($dateOfBirth)
             <p>Manage all employee profiles</p>
         </div>
 
+        <!-- Enhanced Search and Filter Section -->
+        <div class="search-filter-section">
+            <div class="search-row">
+                <div class="search-group">
+                    <label for="searchInput">Search Employees</label>
+                    <input type="text" id="searchInput" class="search-input" placeholder="Search by name, email, phone, department...">
+                </div>
+                <div class="search-group">
+                    <label for="departmentFilter">Department</label>
+                    <select id="departmentFilter" class="filter-select">
+                        <option value="">All Departments</option>
+                        <?php
+                        $dept_stmt = $pdo->query("SELECT DISTINCT department FROM employee_profiles WHERE department IS NOT NULL ORDER BY department");
+                        while ($dept = $dept_stmt->fetch()) {
+                            echo '<option value="' . htmlspecialchars($dept['department']) . '">' . htmlspecialchars($dept['department']) . '</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="search-group">
+                    <label for="statusFilter">Status</label>
+                    <select id="statusFilter" class="filter-select">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="dismissed">Dismissed</option>
+                    </select>
+                </div>
+                <div class="search-group">
+                    <label for="positionFilter">Position</label>
+                    <select id="positionFilter" class="filter-select">
+                        <option value="">All Positions</option>
+                        <?php
+                        $pos_stmt = $pdo->query("SELECT DISTINCT position FROM employee_profiles WHERE position IS NOT NULL ORDER BY position");
+                        while ($pos = $pos_stmt->fetch()) {
+                            echo '<option value="' . htmlspecialchars($pos['position']) . '">' . htmlspecialchars($pos['position']) . '</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="search-group">
+                    <button type="button" id="clearFilters" class="clear-button">Clear Filters</button>
+                </div>
+            </div>
+            
+            <div class="bulk-operations" id="bulkOperations">
+                <div class="bulk-actions">
+                    <span>Selected: <strong id="selectedCount">0</strong> employees</span>
+                    <select id="bulkAction" class="bulk-select">
+                        <option value="">Choose Action...</option>
+                        <option value="activate">Activate</option>
+                        <option value="deactivate">Deactivate</option>
+                        <option value="dismiss">Dismiss</option>
+                        <option value="export">Export Selected</option>
+                        <option value="delete">Delete</option>
+                    </select>
+                    <button type="button" id="applyBulk" class="bulk-button danger">Apply Action</button>
+                </div>
+            </div>
+            
+            <div class="results-info">
+                <span id="resultsCount">Showing all employees</span>
+                <div class="table-controls">
+                    <button type="button" id="viewToggle" class="search-button">Compact View</button>
+                    <button type="button" id="exportData" class="search-button">Export All</button>
+                </div>
+            </div>
+        </div>
+
         <div class="employee-table">
             <?php if ($error): ?>
                 <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
@@ -644,37 +718,27 @@ function calculateAge($dateOfBirth)
                 <div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
             <?php endif; ?>
 
-            <div class="controls">
-                <input type="text" class="search-box" placeholder="Search employees..." id="searchInput">
-                <div class="view-toggle">
-                    <button class="toggle-btn active" onclick="toggleView('compact')">Compact View</button>
-                    <button class="toggle-btn" onclick="toggleView('detailed')">Detailed View</button>
-                </div>
-            </div>
-
-            <?php if (empty($employees)): ?>
-                <div class="empty-message">
-                    <p>No employees found.</p>
-                </div>
-            <?php else: ?>
-                <div class="table-container compact-view" id="tableContainer">
+            <div class="table-container compact-view" id="tableContainer">
+                <div class="table-responsive">
                     <table id="employeeTable">
                         <thead>
                             <tr>
+                                <th class="col-checkbox">
+                                    <input type="checkbox" id="selectAll" class="bulk-checkbox" title="Select All">
+                                </th>
                                 <th class="col-profile-pic extra-column">Photo</th>
-                                <th class="col-employee-id">Matricule</th>
+                                <th class="col-employee-id" data-sort="matricule">Matricule</th>
                                 <th class="col-name">Name</th>
-                                <th class="col-gender extra-column">Gender</th>
-                                <th class="col-dob extra-column">Date of Birth</th>
-                                <th class="col-age extra-column">Age</th>
-                                <th class="col-department">Department</th>
-                                <th class="col-position extra-column">Position</th>
-                                <th class="col-phone">Phone</th>
-                                <th class="col-address extra-column">Address</th>
-                                <th class="col-education extra-column">Education</th>
-                                <th class="col-civil extra-column">Civil Status</th>
-                                <th class="col-children extra-column">Children</th>
-                                <th class="col-ncin extra-column">NCIN</th>
+                                <th class="col-email" data-sort="email">Email</th>
+                                <th class="col-phone extra-column" data-sort="phone">Phone</th>
+                                <th class="col-department" data-sort="department">Department</th>
+                                <th class="col-position" data-sort="position">Position</th>
+                                <th class="col-status" data-sort="status">Status</th>
+                                <th class="col-salary extra-column" data-sort="salary">Salary</th>
+                                <th class="col-hire-date extra-column" data-sort="hireDate">Hire Date</th>
+                                <th class="col-age extra-column" data-sort="age">Age</th>
+                                <th class="col-ncin extra-column" data-sort="ncin">NCIN</th>
+                                <th class="col-cnss extra-column" data-sort="cnss">CNSS</th>
                                 <th class="col-cin-front extra-column">CIN Front</th>
                                 <th class="col-cin-back extra-column">CIN Back</th>
                                 <th class="col-cnss extra-column">CNSS</th>
@@ -683,10 +747,6 @@ function calculateAge($dateOfBirth)
                                 <th class="col-license-nb extra-column">License number</th>
                                 <th class="col-license-img extra-column">License Image</th>
                                 <th class="col-factory extra-column">Factory</th>
-                                <th class="col-hire-date extra-column">Hire Date</th>
-                                <th class="col-salary extra-column">Salary</th>
-                                <th class="col-status">Status</th>
-                                <th class="col-dismissal extra-column">Dismissal Reason</th>
                                 <th class="col-created extra-column">Created</th>
                                 <th class="col-updated extra-column">Updated</th>
                                 <th class="col-actions">Actions</th>
@@ -694,52 +754,41 @@ function calculateAge($dateOfBirth)
                         </thead>
                         <tbody id="employeeTableBody">
                             <?php foreach ($employees as $employee): ?>
-                                <tr>
+                                <tr data-user-id="<?php echo $employee['user_id']; ?>">
+                                    <td class="col-checkbox">
+                                        <input type="checkbox" class="employee-checkbox bulk-checkbox" 
+                                               data-user-id="<?php echo $employee['user_id']; ?>">
+                                    </td>
                                     <td class="col-profile-pic extra-column">
                                         <?php if ($employee['profile_picture']): ?>
                                             <img src="<?php echo htmlspecialchars($employee['profile_picture']); ?>"
-                                                class="profile-pic" alt="Profile Picture">
+                                                 class="profile-pic" alt="Profile Picture">
                                         <?php else: ?>
                                             None
                                         <?php endif; ?>
                                     </td>
-                                    <td class="col-employee-id employee-id">
-                                        <?php echo htmlspecialchars($employee['employee_id'] ?? null); ?>
-                                    </td>
+                                    <td class="col-employee-id"><?php echo htmlspecialchars($employee['employee_id'] ?? 'N/A'); ?></td>
                                     <td class="col-name employee-name">
                                         <?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>
                                     </td>
-                                    <td class="col-gender extra-column">
-                                        <?php echo htmlspecialchars($employee['gender'] ?? null); ?>
+                                    <td class="col-email"><?php echo htmlspecialchars($employee['email']); ?></td>
+                                    <td class="col-phone extra-column"><?php echo htmlspecialchars($employee['phone'] ?? 'N/A'); ?></td>
+                                    <td class="col-department"><?php echo htmlspecialchars($employee['department'] ?? 'N/A'); ?></td>
+                                    <td class="col-position"><?php echo htmlspecialchars($employee['position'] ?? 'N/A'); ?></td>
+                                    <td class="col-status">
+                                        <span class="status-badge status-<?php echo $employee['status']; ?>">
+                                            <?php echo ucfirst($employee['status']); ?>
+                                        </span>
                                     </td>
-                                    <td class="col-dob extra-column"><?php echo formatDate($employee['date_of_birth']); ?></td>
-                                    <td class="col-age extra-column"><?php echo calculateAge($employee['date_of_birth']); ?>
-                                    </td>
-                                    <td class="col-department"><?php echo htmlspecialchars($employee['department'] ?? null); ?>
-                                    </td>
-                                    <td class="col-position extra-column">
-                                        <?php echo htmlspecialchars($employee['position'] ?? null); ?>
-                                    </td>
-                                    <td class="col-phone"><?php echo htmlspecialchars($employee['phone'] ?? null); ?></td>
-                                    <td class="col-address extra-column">
-                                        <?php echo htmlspecialchars($employee['address'] ?? null); ?>
-                                    </td>
-                                    <td class="col-education extra-column">
-                                        <?php echo htmlspecialchars($employee['education'] ?? null); ?>
-                                    </td>
-                                    <td class="col-civil extra-column">
-                                        <?php echo htmlspecialchars($employee['civil_status'] ?? null); ?>
-                                    </td>
-                                    <td class="col-children extra-column">
-                                        <?php echo htmlspecialchars($employee['children'] ?? '0'); ?>
-                                    </td>
-                                    <td class="col-ncin extra-column">
-                                        <?php echo htmlspecialchars($employee['ncin'] ?? null); ?>
-                                    </td>
+                                    <td class="col-salary extra-column"><?php echo formatSalary($employee['salary']); ?></td>
+                                    <td class="col-hire-date extra-column"><?php echo formatDate($employee['hire_date']); ?></td>
+                                    <td class="col-age extra-column"><?php echo calculateAge($employee['date_of_birth']); ?></td>
+                                    <td class="col-ncin extra-column"><?php echo htmlspecialchars($employee['ncin'] ?? 'N/A'); ?></td>
+                                    <td class="col-cnss extra-column"><?php echo formatNCSS($employee['cnss_first'], $employee['cnss_last']); ?></td>
                                     <td class="col-cin-front extra-column">
                                         <?php if ($employee['cin_image_front']): ?>
                                             <img src="<?php echo htmlspecialchars($employee['cin_image_front']); ?>"
-                                                class="cin-image" alt="CIN Front">
+                                                 class="cin-image" alt="CIN Front">
                                         <?php else: ?>
                                             None
                                         <?php endif; ?>
@@ -747,58 +796,37 @@ function calculateAge($dateOfBirth)
                                     <td class="col-cin-back extra-column">
                                         <?php if ($employee['cin_image_back']): ?>
                                             <img src="<?php echo htmlspecialchars($employee['cin_image_back']); ?>"
-                                                class="cin-image" alt="CIN Back">
+                                                 class="cin-image" alt="CIN Back">
                                         <?php else: ?>
                                             None
                                         <?php endif; ?>
                                     </td>
-                                    <td class="col-cnss extra-column">
-                                        <?php echo formatNCSS($employee['cnss_first'], $employee['cnss_last']); ?>
-                                    </td>
-                                    <td class="col-license extra-column">
-                                        <?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?>
-                                    </td>
-                                    <td class="col-license-cat extra-column">
-                                        <?php echo htmlspecialchars($employee['driving_license_category'] ?? null); ?>
-                                    </td>
-                                    <td class="col-license-nb extra-column">
-                                        <?php echo htmlspecialchars($employee['driving_license_number'] ?? null); ?>
-                                    </td>
+                                    <td class="col-cnss extra-column"><?php echo formatNCSS($employee['cnss_first'], $employee['cnss_last']); ?></td>
+                                    <td class="col-license extra-column"><?php echo $employee['has_driving_license'] ? 'Yes' : 'No'; ?></td>
+                                    <td class="col-license-cat extra-column"><?php echo htmlspecialchars($employee['driving_license_category'] ?? null); ?></td>
+                                    <td class="col-license-nb extra-column"><?php echo htmlspecialchars($employee['driving_license_number'] ?? null); ?></td>
                                     <td class="col-license-img extra-column">
                                         <?php if ($employee['driving_license_image']): ?>
                                             <img src="<?php echo htmlspecialchars($employee['driving_license_image']); ?>"
-                                                class="license-image" alt="License">
+                                                 class="license-image" alt="License">
                                         <?php else: ?>
                                             None
                                         <?php endif; ?>
                                     </td>
-                                    <td class="col-factory extra-column">
-                                        <?php echo htmlspecialchars($employee['factory'] ?? null); ?>
-                                    </td>
-                                    <td class="col-hire-date extra-column"><?php echo formatDate($employee['hire_date']); ?>
-                                    </td>
-                                    <td class="col-salary extra-column"><?php echo formatSalary($employee['salary']); ?></td>
-                                    <td class="col-status">
-                                        <span class="status <?php echo htmlspecialchars($employee['status'] ?? 'active'); ?>">
-                                            <?php echo htmlspecialchars($employee['status'] ?? 'Active'); ?>
-                                        </span>
-                                    </td>
-                                    <td class="col-dismissal extra-column">
-                                        <?php echo htmlspecialchars($employee['dismissal_reason'] ?? null); ?>
-                                    </td>
+                                    <td class="col-factory extra-column"><?php echo htmlspecialchars($employee['factory'] ?? null); ?></td>
                                     <td class="col-created extra-column"><?php echo formatDate($employee['created_at']); ?></td>
                                     <td class="col-updated extra-column"><?php echo formatDate($employee['updated_at']); ?></td>
                                     <td class="col-actions">
                                         <div class="action-buttons">
                                             <a href="admin_edit_employee.php?id=<?php echo $employee['id']; ?>"
-                                                class="btn btn-view">View/Edit</a>
+                                               class="btn btn-view">View/Edit</a>
                                             <form method="POST" action="" style="display: inline;"
-                                                onsubmit="return confirmDelete('<?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>');">
+                                                  onsubmit="return confirmDelete('<?php echo htmlspecialchars(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')); ?>');">
                                                 <input type="hidden" name="csrf_token"
-                                                    value="<?php echo generateCSRFToken(); ?>">
+                                                       value="<?php echo generateCSRFToken(); ?>">
                                                 <input type="hidden" name="user_id" value="<?php echo $employee['id']; ?>">
                                                 <button type="submit" name="delete_employee"
-                                                    class="btn btn-delete">Delete</button>
+                                                        class="btn btn-delete">Delete</button>
                                             </form>
                                         </div>
                                     </td>
@@ -807,17 +835,27 @@ function calculateAge($dateOfBirth)
                         </tbody>
                     </table>
                 </div>
-            <?php endif; ?>
-        </div>
+                
+                <!-- Pagination -->
+                <div class="pagination-container">
+                    <div class="pagination-info" id="resultsCount"></div>
+                    <div class="pagination" id="pagination"></div>
+                </div>
+            </div>
     </div>
+</div>
 
-    <script>
-        let currentView = 'compact';
+<script src="enhanced_ui.js"></script>
+<script>
+    // Additional page-specific JavaScript
+    let currentView = 'compact';
 
-        function toggleView(view) {
-            const container = document.getElementById('tableContainer');
-            const toggleBtns = document.querySelectorAll('.toggle-btn');
+    function toggleView(view) {
+        const container = document.getElementById('tableContainer');
+        const toggleBtns = document.querySelectorAll('.toggle-btn');
 
+        toggleBtns.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
             toggleBtns.forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
 
