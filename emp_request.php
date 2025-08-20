@@ -12,6 +12,8 @@ if (isset($_GET['error'])) {
     $error = htmlspecialchars($_GET['error']);
 }
 
+$page_title = "My Requests";
+
 // Get employee profile
 $stmt = $pdo->prepare("
     SELECT ep.id as employee_profile_id, ep.first_name, ep.last_name, u.email

@@ -282,11 +282,6 @@ if ($_SESSION['role'] === 'admin') {
             position: relative;
         }
 
-        .logo {
-            height: 50px;
-            margin-right: 15px;
-        }
-
         .profile-picture-corner {
             position: absolute;
             top: 20px;

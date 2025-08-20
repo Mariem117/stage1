@@ -3,6 +3,7 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
+$page_title = "Create Job";
 $error = '';
 $success = '';
 
@@ -189,14 +190,7 @@ $predefined_departments = ['HR', 'IT', 'Finance', 'Marketing', 'Sales', 'Operati
 $departments = !empty($existing_departments) ? $existing_departments : $predefined_departments;
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Job Posting - Admin Panel</title>
-    <link rel="stylesheet" href="dashboard.css">
+<?php include 'admin_header.php'; ?>
     <style>
         .container {
             max-width: 800px;

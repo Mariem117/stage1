@@ -358,14 +358,8 @@ if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
+<?php include 'admin_header.php'; ?>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Admin Request Management - Employee Management System</title>
-    <link rel="stylesheet" href="dashboard.css">
     <style>
         .stats-grid {
             display: grid;
@@ -619,24 +613,6 @@ if ($_POST && isset($_POST['bulk_action']) && verifyCSRFToken($_POST['csrf_token
             background: #f8f9fa;
         }
     </style>
-</head>
-
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <span class="admin-badge">ADMIN</span>
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
-                <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
-                <a href="admin_jobs.php" class="nav-link active">Jobs</a>
-                <a href="admin_applications.php" class="nav-link">Applications</a>
-                <a href="logout.php" class="nav-link">Logout</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
         <?php if ($error): ?>

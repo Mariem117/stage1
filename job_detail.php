@@ -141,12 +141,26 @@ $deadline_passed = $job['application_deadline'] && strtotime($job['application_d
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($job['title']); ?> - Job Details</title>
+    <title><?php echo htmlspecialchars($job['title']); ?> - Employee Management System</title>
     <link rel="stylesheet" href="job_detail.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <img src="logo.png" alt="Logo" class="logo">
+                Employee Management System
+            </div>
+            <div class="navbar-nav">
+                <a href="index.php" class="nav-link">Home</a>
+                <a href="jobs.php" class="nav-link">Careers</a>
+                <a href="login.php" class="nav-link">Employee Login</a>
+            </div>
+        </div>
+    </nav>
     <style>
         .container {
             max-width: 1000px;
@@ -441,16 +455,6 @@ $deadline_passed = $job['application_deadline'] && strtotime($job['application_d
 </head>
 
 <body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <a href="index.php" class="nav-link">Home</a>
-                <a href="jobs.php" class="nav-link">Careers</a>
-                <a href="login.php" class="nav-link">Employee Login</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
 

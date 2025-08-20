@@ -3,6 +3,10 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
+$page_title = "Edit Employee";
+$additional_css = [];
+$additional_styles = '';
+
 $error = '';
 $success = '';
 
@@ -248,22 +252,13 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
+<?php include 'admin_header.php'; ?>
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Employee - Employee Management System</title>
     <link rel="stylesheet" href="profile.css">
     <style>
         .profile-form {
             position: relative;
-        }
-
-        .logo {
-            height: 50px;
-            margin-right: 15px;
         }
 
         .profile-picture-corner {
@@ -409,25 +404,6 @@ if ($_POST && isset($_POST['update_employee']) && verifyCSRFToken($_POST['csrf_t
 </head>
 
 <body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-brand">Employee Management System</div>
-            <div class="navbar-nav">
-                <?php if ($_SESSION['role'] === 'admin'): ?>
-                    <span class="admin-badge">ADMIN</span>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
-                    <a href="employees_listing.php" class="nav-link">Employees</a>
-                <?php else: ?>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <?php endif; ?>
-                <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="admin_request.php" class="nav-link">Notifications</a>
-                <a href="logout.php" class="nav-link">Logout</a>
-            </div>
-        </div>
-    </nav>
-
     <div class="container">
         <div class="profile-header">
             <h1>Edit Employee</h1>

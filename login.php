@@ -59,8 +59,9 @@ if ($_POST && isset($_POST['login'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Employee Management System</title>
+    <title>Employee Login - Employee Management System</title>
     <link rel="stylesheet" href="login.css">
+
     <style>
         .logo {
             height: 50px;

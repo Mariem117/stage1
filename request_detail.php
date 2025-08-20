@@ -2,6 +2,7 @@
 require_once 'config.php';
 requireLogin();
 
+$page_title = "Request Detail";
 $error = '';
 $success = '';
 $request = null;

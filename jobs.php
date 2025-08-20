@@ -43,6 +43,7 @@ $job_postings = $stmt->fetchAll();
 $dept_stmt = $pdo->prepare("SELECT DISTINCT department FROM job_postings WHERE status = 'active' ORDER BY department");
 $dept_stmt->execute();
 $departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
+
 ?>
 
 <!DOCTYPE html>
@@ -51,8 +52,9 @@ $departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Careers - Join Our Team</title>
-    <link rel="stylesheet" href="dashboard.css">
+    <title>Jobs - Employee Management System</title>
+    <link rel="stylesheet" href="responsive.css">
+
     <style>
         .container {
             max-width: 1200px;
@@ -97,23 +99,26 @@ $departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
 
         .job-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
         }
 
         .job-card {
             background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
+            border: 1px solid #f0f0f0;
         }
 
         .job-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+            border-color: #e0e0e0;
         }
 
         .job-card::before {
@@ -122,8 +127,8 @@ $departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
             top: 0;
             left: 0;
             right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 5px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
 
         .job-title {
@@ -243,16 +248,6 @@ $departments = $dept_stmt->fetchAll(PDO::FETCH_COLUMN);
 </head>
 
 <body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <a href="index.php" class="nav-link">Home</a>
-                <a href="jobs.php" class="nav-link">Careers</a>
-                <a href="login.php" class="nav-link">Employee Login</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
         <!-- Hero Section -->

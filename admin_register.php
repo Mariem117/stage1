@@ -309,10 +309,9 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
                     unlink($path);
                 }
             }
-
+            
             $error = 'Registration failed: ' . $e->getMessage();
         }
-
     }
 }
 ?>
@@ -325,6 +324,9 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Registration - Employee Management System</title>
     <link rel="stylesheet" href="emp_register.css">
+</head>
+
+<body>
     <style>
         .logo {
             height: 50px;

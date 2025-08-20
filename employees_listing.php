@@ -8,6 +8,7 @@ if ($_SESSION['role'] !== 'admin') {
     exit();
 }
 
+$page_title = "Employees Listing";
 $error = '';
 $success = '';
 
@@ -83,7 +84,6 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute();
 $employees = $stmt->fetchAll();
-
 // Function to format date
 function formatDate($date)
 {
@@ -120,15 +120,10 @@ function calculateAge($dateOfBirth)
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Listing - Employee Management System</title>
-    <link rel="stylesheet" href="responsive.css">
-    <style>
+<?php 
+$page_title = "Employee Listing";
+$additional_css = ["responsive.css"];
+$additional_styles = "
         * {
             margin: 0;
             padding: 0;
@@ -143,64 +138,7 @@ function calculateAge($dateOfBirth)
             color: #333;
         }
 
-        .logo {
-            height: 50px;
-            margin-right: 15px;
-        }
-
-        img {
-            overflow-clip-margin: content-box;
-            overflow: clip;
-        }
-
-        .admin-badge {
-            background: #a70202;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-
-        .navbar {
-            background: white;
-            padding-top: 15px;
-            padding-bottom: 15px;
-            padding-left: 0;
-            padding-right: 0;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        .navbar-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .navbar-nav {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-        }
-
-        .nav-link {
-            color: #333;
-            text-decoration: none;
-            font-size: 1rem;
-            transition: color 0.3s, transform 0.2s;
-        }
-
-        .nav-link:hover,
-        .nav-link:focus {
-            color: #a70202;
-            transform: translateY(-2px);
-            outline: none;
-        }
-
+        
         .container {
             width: 100%;
             max-width: 1400px;
@@ -607,32 +545,15 @@ function calculateAge($dateOfBirth)
 
         .col-actions {
             width: 150px;
-        }
-    </style>
-</head>
+        }";
 
-<body>
+include 'admin_header.php';
+?>
+
     <div id="loadingSpinner" class="loading" style="display: none;">
         <div class="spinner"></div>
     </div>
     <div id="alertContainer"></div>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <?php if ($_SESSION['role'] === 'admin'): ?>
-                    <span class="admin-badge">ADMIN</span>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
-                    <a href="employees_listing.php" class="nav-link">Employees</a>
-                <?php else: ?>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <?php endif; ?>
-                <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
-                <a href="logout.php" class="nav-link">Logout</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
         <div class="header">

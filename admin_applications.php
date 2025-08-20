@@ -3,6 +3,10 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
+$page_title = "Job Applications";
+$additional_css = [];
+$additional_styles = "";
+
 $error = '';
 $success = '';
 
@@ -167,13 +171,8 @@ if ($_POST && isset($_POST['update_application_status']) && verifyCSRFToken($_PO
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Applications Management - Admin Panel</title>
-    <link rel="stylesheet" href="dashboard.css">
+<?php include 'admin_header.php'; ?>
+
     <style>
         .stats-grid {
             display: grid;
@@ -388,21 +387,6 @@ if ($_POST && isset($_POST['update_application_status']) && verifyCSRFToken($_PO
 </head>
 
 <body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <span class="admin-badge">ADMIN</span>
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
-                <a href="admin_jobs.php" class="nav-link">Jobs</a>
-                <a href="admin_applications.php" class="nav-link active">Applications</a>
-                <a href="profile.php" class="nav-link">Profile</a>
-                <a href="logout.php" class="nav-link">Logout</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
         <?php if ($error): ?>

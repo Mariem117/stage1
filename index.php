@@ -39,8 +39,9 @@ if ($_POST && isset($_POST['login']) && verifyCSRFToken($_POST['csrf_token'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Management System - Home</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Employee Management System</title>
+    <link rel="stylesheet" href="login.css">
+
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -147,10 +148,12 @@ if ($_POST && isset($_POST['login']) && verifyCSRFToken($_POST['csrf_token'])) {
     <div class="container">
         <div class="description">
             <div class="description-text">
-                <h1>Welcome to the Employees Management System</h1>
-                <p>An employees system securely stores and organizes employees personal details.
-                    It streamlines HR processes by enabling efficient data access,
-                    updates, and compliance with data protection regulations.</p>
+                <h1>Welcome to YURA Employee Management System</h1>
+                <br>
+                <p>A comprehensive HR platform that manages complete employee lifecycles from recruitment to workforce analytics.</p> 
+                <p>Features include real-time attendance tracking, job posting management, employee profile administration, 
+                    bulk operations, document management, and advanced reporting dashboards. Streamline your HR processes 
+                    with secure data handling, role-based access control, and automated notifications.</p>
             </div>
             <div class="description-image">
                 <img src="ems.png" alt="Employee Management System">

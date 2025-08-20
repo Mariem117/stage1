@@ -3,6 +3,10 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
+$page_title = "Job Management";
+$additional_css = [];
+$additional_styles = "";
+
 $error = '';
 $success = '';
 
@@ -86,14 +90,8 @@ $stats_stmt->execute();
 $stats = $stats_stmt->fetch();
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
+<?php include 'admin_header.php'; ?>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Management - Admin Panel</title>
-    <link rel="stylesheet" href="dashboard.css">
     <style>
         .stats-grid {
             display: grid;
@@ -263,24 +261,6 @@ $stats = $stats_stmt->fetch();
             border: 1px solid #c3e6cb;
         }
     </style>
-</head>
-
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <span class="admin-badge">ADMIN</span>
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
-                <a href="admin_jobs.php" class="nav-link active">Jobs</a>
-                <a href="admin_applications.php" class="nav-link">Applications</a>
-                <a href="profile.php" class="nav-link">Profile</a>
-                <a href="logout.php" class="nav-link">Logout</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
         <?php if ($error): ?>

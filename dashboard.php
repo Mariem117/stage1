@@ -3,6 +3,8 @@ require_once 'config.php';
 requireLogin();
 requireAdmin();
 
+$page_title = "Dashboard";
+
 // Fetch statistics for the dashboard
 $stmt = $pdo->query("SELECT COUNT(*) as total_employees FROM employee_profiles");
 $total_employees = $stmt->fetchColumn();
@@ -89,7 +91,6 @@ $stmt = $pdo->prepare("SELECT ep.first_name, ep.last_name, ep.employee_id,
     LIMIT 5");
 $stmt->execute();
 $punctual_employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 // Présence par département aujourd'hui
 $stmt = $pdo->query("SELECT ep.department, 
     COUNT(DISTINCT CASE WHEN DATE(tr.check_in) = CURDATE() THEN tr.employee_id END) as present_count,
@@ -106,30 +107,12 @@ $presence_by_dept = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $presence_rate = $active_employees > 0 ? round(($present_today / $active_employees) * 100, 1) : 0;
 $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100, 1) : 0;
 
-?>
-
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Employee Management System</title>
-    <link rel="stylesheet" href="dashboard.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        .logo {
-            height: 50px;
-            margin-right: 15px;
-        }
-
-        img {
-            overflow-clip-margin: content-box;
-            overflow: clip;
-        }
-
+$page_title = "Admin Dashboard";
+$additional_css = [];
+$include_chartjs = true;
+$additional_styles = "
         .time-stamp-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ff9d9d 0%,#ffd69d 100%);
             color: white;
             padding: 25px;
             border-radius: 12px;
@@ -225,16 +208,6 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
             background-color: #d69e2e;
         }
 
-        .stat-card.presence {
-            background: linear-gradient(135deg, #38a169, #2f855a);
-            color: white;
-        }
-
-        .stat-card.late-rate {
-            background: linear-gradient(135deg, #d69e2e, #b7791f);
-            color: white;
-        }
-
         .live-indicator {
             display: inline-block;
             width: 8px;
@@ -257,24 +230,10 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
             100% {
                 opacity: 1;
             }
-        }
-    </style>
-</head>
+        }";
 
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <span class="admin-badge">ADMIN</span>
-                <a href="dashboard.php" class="nav-link">Dashboard</a>
-                <a href="employees_listing.php" class="nav-link">Employees</a>
-                <a href="profile.php" class="nav-link">My Profile</a>
-                <a href="admin_request.php" class="nav-link">Requests</a>
-                <a href="logout.php" class="nav-link">Logout</a>
-            </div>
-        </div>
-    </nav>
+include 'admin_header.php';
+?>
 
     <div class="container">
         <div class="welcome-section">
@@ -303,6 +262,7 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
             </div>
         </div>
 
+
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-number"><?php echo $total_employees; ?></div>
@@ -323,7 +283,7 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
         </div>
         <div class="dashboard-grid">
             <div class="card">
-                <h2>🏆 Top Punctuality (This week)</h2>
+                <h2> Top Punctuality (This week)</h2>
                 <?php if (!empty($punctual_employees)): ?>
                     <table class="punctuality-table">
                         <thead>
@@ -352,7 +312,7 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
 
             <!-- Attendance by Department -->
             <div class="card">
-                <h2>📍 Attendance by Department</h2>
+                <h2> Attendance by Department</h2>
                 <ul class="dept-list">
                     <?php foreach ($presence_by_dept as $dept): ?>
                         <li class="dept-item">
@@ -371,11 +331,11 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
 
             </div>
 
-            <div class="dashboard-grid">
                 <div class="chart-container">
                     <h3>Gender Distribution</h3>
                     <canvas id="genderChart"></canvas>
                 </div>
+            
                 <div class="chart-container">
                     <h3>Department Distribution</h3>
                     <canvas id="departmentChart"></canvas>
@@ -386,6 +346,7 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
                 </div>
 
             </div>
+        </div>
         </div>
 
         <script>
