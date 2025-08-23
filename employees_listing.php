@@ -124,26 +124,7 @@ function calculateAge($dateOfBirth)
 $page_title = "Employee Listing";
 $additional_css = ["responsive.css"];
 $additional_styles = "
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
 
-        body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #a70202 0%, rgb(0, 0, 0) 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: #333;
-        }
-
-        
-        .container {
-            width: 100%;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
 
         .header {
             text-align: center;
@@ -242,6 +223,10 @@ $additional_styles = "
 
         .compact-view .extra-column {
             display: none;
+        }
+
+        .detailed-view .extra-column {
+            display: table-cell;
         }
 
         .detailed-view .table-container {
@@ -419,15 +404,6 @@ $additional_styles = "
                 font-size: 0.7rem;
             }
 
-            .navbar-container {
-                flex-direction: column;
-                gap: 1rem;
-            }
-
-            .navbar-nav {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
         }
 
         /* Column width definitions */
@@ -624,7 +600,7 @@ include 'admin_header.php';
             <div class="results-info">
                 <span id="resultsCount">Showing all employees</span>
                 <div class="table-controls">
-                    <button type="button" id="viewToggle" class="search-button">Compact View</button>
+                    <button type="button" id="viewToggle" class="search-button" onclick="toggleView()">Switch to Detailed View</button>
                     <button type="button" id="exportData" class="search-button">Export All</button>
                 </div>
             </div>
@@ -771,23 +747,20 @@ include 'admin_header.php';
     // Additional page-specific JavaScript
     let currentView = 'compact';
 
-    function toggleView(view) {
+    function toggleView() {
         const container = document.getElementById('tableContainer');
-        const toggleBtns = document.querySelectorAll('.toggle-btn');
+        const toggleBtn = document.getElementById('viewToggle');
 
-        toggleBtns.forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
-            toggleBtns.forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-
-            if (view === 'compact') {
-                container.className = 'table-container compact-view';
-                currentView = 'compact';
-            } else {
-                container.className = 'table-container detailed-view';
-                currentView = 'detailed';
-            }
+        if (currentView === 'compact') {
+            container.className = 'table-container detailed-view';
+            toggleBtn.textContent = 'Switch to Compact View';
+            currentView = 'detailed';
+        } else {
+            container.className = 'table-container compact-view';
+            toggleBtn.textContent = 'Switch to Detailed View';
+            currentView = 'compact';
         }
+    }
 
         function confirmDelete(employeeName) {
             return confirm(`Are you sure you want to delete ${employeeName}'s profile? This action cannot be undone.`);

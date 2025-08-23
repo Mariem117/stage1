@@ -269,6 +269,18 @@ if ($_SESSION['role'] === 'admin') {
 }
 ?>
 
+<?php
+// Determine header based on role
+$isAdmin = (isset($_SESSION['role']) && $_SESSION['role'] === 'admin');
+if ($isAdmin) {
+    // Use unified admin header with page-specific CSS
+    $page_title = "My Profile";
+    $additional_css = ["profile.css"];
+    include 'admin_header.php';
+}
+?>
+
+<?php if (!$isAdmin): ?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -380,27 +392,20 @@ if ($_SESSION['role'] === 'admin') {
             }
         }
     </style>
-</head>
+    </head>
 
-<body>
-    <nav class="navbar">
-        <div class="navbar-container">
-            <img src="logo.png" alt="Logo" class="logo">
-            <div class="navbar-nav">
-                <?php if ($_SESSION['role'] === 'admin'): ?>
-                    <span class="admin-badge">ADMIN</span>
-                    <a href="dashboard.php" class="nav-link">Dashboard</a>
-                    <a href="employees_listing.php" class="nav-link">Employees</a>
-                    <a href="profile.php" class="nav-link">My Profile</a>
-                    <a href="admin_request.php" class="nav-link">Requests</a>
-                <?php else: ?>
+    <body>
+        <nav class="navbar">
+            <div class="navbar-container">
+                <img src="logo.png" alt="Logo" class="logo">
+                <div class="navbar-nav">
                     <a href="profile.php" class="nav-link">My Profile</a>
                     <a href="emp_request.php" class="nav-link">Requests</a>
-                <?php endif; ?>
-                <a href="logout.php" class="nav-link">Logout</a>
+                    <a href="logout.php" class="nav-link">Logout</a>
+                </div>
             </div>
-        </div>
-    </nav>
+        </nav>
+<?php endif; ?>
 
     <div class="container">
         <div class="profile-header">

@@ -38,7 +38,7 @@ $age_data = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 // Fetch average salary by department
 $stmt = $pdo->query("SELECT department, AVG(salary) as avg_salary 
     FROM employee_profiles 
-    WHERE department IN ('IT', 'HR', 'Finance', 'Marketing', 'Production','Maintenance') 
+    WHERE department IN ('General Management', 'Production Department', 'Quality Department', 'Logistics Department', 'Human Resources Department', 'Maintenance Department', 'Information Technology Department') 
     GROUP BY department");
 $salary_data = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
@@ -51,10 +51,10 @@ $stmt->execute();
 $recent_employees = $stmt->fetchAll();
 
 // Fetch department counts for specific departments
-$departments = ['IT' => 0, 'HR' => 0, 'Finance' => 0, 'Marketing' => 0, 'Production' => 0, 'Maintenance' => 0];
+$departments = ['General Management' => 0, 'Production Department' => 0, 'Quality Department' => 0, 'Logistics Department' => 0, 'Human Resources Department' => 0, 'Maintenance Department' => 0, 'Information Technology Department' => 0];
 $stmt = $pdo->query("SELECT department, COUNT(*) as count 
     FROM employee_profiles 
-    WHERE department IN ('IT', 'HR', 'Finance', 'Marketing', 'Production', 'Maintenance') 
+    WHERE department IN ('General Management', 'Production Department', 'Quality Department', 'Logistics Department', 'Human Resources Department', 'Maintenance Department', 'Information Technology Department') 
     GROUP BY department");
 $results = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 foreach ($results as $dept => $count) {
@@ -98,7 +98,7 @@ $stmt = $pdo->query("SELECT ep.department,
     ROUND((COUNT(DISTINCT CASE WHEN DATE(tr.check_in) = CURDATE() THEN tr.employee_id END) / COUNT(DISTINCT ep.employee_id)) * 100, 1) as presence_rate
     FROM employee_profiles ep
     LEFT JOIN time_records tr ON ep.employee_id = tr.employee_id
-    WHERE ep.department IN ('IT', 'HR', 'Finance', 'Marketing', 'Production', 'Maintenance') AND ep.status = 'active'
+    WHERE ep.department IN ('General Management', 'Production Department', 'Quality Department', 'Logistics Department', 'Human Resources Department', 'Maintenance Department', 'Information Technology Department') AND ep.status = 'active'
     GROUP BY ep.department
     ORDER BY presence_rate DESC");
 $presence_by_dept = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -110,135 +110,14 @@ $late_rate = $present_today > 0 ? round(($late_arrivals / $present_today) * 100,
 $page_title = "Admin Dashboard";
 $additional_css = [];
 $include_chartjs = true;
-$additional_styles = "
-        .time-stamp-section {
-            background: linear-gradient(135deg, #ff9d9d 0%,#ffd69d 100%);
-            color: white;
-            padding: 25px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
-        }
-
-        .time-stamp-section h2 {
-            margin: 0 0 20px 0;
-            font-size: 1.5em;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .time-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .time-stat-card {
-            background: rgba(255, 255, 255, 0.15);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: transform 0.3s ease;
-        }
-
-        .time-stat-card:hover {
-            transform: translateY(-3px);
-        }
-
-        .time-stat-number {
-            font-size: 2.2em;
-            font-weight: bold;
-            margin-bottom: 8px;
-            display: block;
-        }
-
-        .time-stat-label {
-            font-size: 0.9em;
-            opacity: 0.9;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .punctuality-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-
-        .punctuality-table th {
-            background-color: #f7fafc;
-            padding: 12px 10px;
-            text-align: left;
-            font-weight: 600;
-            color: #2d3748;
-            border-bottom: 2px solid #e2e8f0;
-        }
-
-        .punctuality-table td {
-            padding: 10px;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        .punctuality-rate {
-            color: #38a169;
-            font-weight: bold;
-        }
-
-        .presence-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-
-        .present {
-            background-color: #38a169;
-        }
-
-        .absent {
-            background-color: #e53e3e;
-        }
-
-        .partial {
-            background-color: #d69e2e;
-        }
-
-        .live-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background: #38a169;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-            margin-left: 8px;
-        }
-
-        @keyframes pulse {
-            0% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-
-            100% {
-                opacity: 1;
-            }
-        }";
-
+$additional_css = ["dashboard.css"];
 include 'admin_header.php';
 ?>
 
     <div class="container">
         <div class="welcome-section">
             <h1>Welcome, Admin!</h1>
-            <p>Manage your employee records and system settings efficiently.</p>
+            <p>Manage your employeeS records and system settings efficiently.</p>
         </div>
         <div class="time-stamp-section">
             <h2>🕐 YURA Time Tracking - Real Time <span class="live-indicator"></span></h2>
@@ -330,15 +209,13 @@ include 'admin_header.php';
                 </ul>
 
             </div>
-
+                <div class="chart-container large-chart">
+                    <h3>Department Distribution</h3>
+                    <canvas id="departmentChart"></canvas>
+                </div>
                 <div class="chart-container">
                     <h3>Gender Distribution</h3>
                     <canvas id="genderChart"></canvas>
-                </div>
-            
-                <div class="chart-container">
-                    <h3>Department Distribution</h3>
-                    <canvas id="departmentChart"></canvas>
                 </div>
                 <div class="chart-container">
                     <h3>Age Segmentation</h3>

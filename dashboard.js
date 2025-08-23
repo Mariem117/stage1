@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Department Distribution Chart
     const departmentCtx = document.getElementById('departmentChart');
     if (departmentCtx && typeof departmentData !== 'undefined') {
-        const departmentLabels = ['IT', 'HR', 'Finance', 'Marketing', 'Operations'];
+        const departmentLabels = ['General Management', 'Production Department', 'Quality Department', 'Logistics Department', 'Human Resources Department', 'Maintenance Department', 'Information Technology Department'];
         const departmentValues = departmentLabels.map(label => departmentData[label] || 0);
         
         new Chart(departmentCtx, {

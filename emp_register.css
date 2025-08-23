@@ -6,10 +6,52 @@
 
 body {
   font-family: Arial, sans-serif;
-  background: linear-gradient(135deg, #a70202 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #ffffffff 0%, #a70202 100%);
   min-height: 100vh;
   padding: 20px;
 }
+
+.navbar {
+  background: none;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.navbar-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.navbar-brand {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}
+
+.navbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-left: auto;
+}
+
+.nav-link {
+  color: #ffff;
+  text-decoration: none;
+  font-size: 20px;
+  transition: color 0.3s;
+}
+
+.logo {
+  height: 50px;
+  margin-right: 15px;
+}
+
 
 .container {
   width: 100%;
@@ -29,13 +71,13 @@ body {
 }
 
 .register-header h1 {
-  color: #fff;
+  color: #000000;
   margin-bottom: 5px;
   font-size: 2rem;
 }
 
 .register-header p {
-  color: #ffffff;
+  color: #0f0f0f;
   font-size: 14px;
 }
 

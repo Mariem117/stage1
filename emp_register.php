@@ -450,14 +450,15 @@ if ($_POST && isset($_POST['register']) && verifyCSRFToken($_POST['csrf_token'])
             <div class="form-row">
                 <div class="form-group">
                     <label for="department">Department</label>
-                    <select id="department" name="department">
+                    <select id="department" name="department" required>
                         <option value="">Select Department</option>
-                        <option value="Production" <?php echo (isset($_POST['department']) && $_POST['department'] === 'Production') ? 'selected' : ''; ?>>Production</option>
-                        <option value="HR" <?php echo (isset($_POST['department']) && $_POST['department'] === 'HR') ? 'selected' : ''; ?>>HR</option>
-                        <option value="Maintenance" <?php echo (isset($_POST['department']) && $_POST['department'] === 'Maintenance') ? 'selected' : ''; ?>>Maintenance</option>
-                        <option value="Finance" <?php echo (isset($_POST['department']) && $_POST['department'] === 'Finance') ? 'selected' : ''; ?>>Finance</option>
-                        <option value="IT" <?php echo (isset($_POST['department']) && $_POST['department'] === 'IT') ? 'selected' : ''; ?>>IT</option>
-                        <option value="Marketing" <?php echo (isset($_POST['department']) && $_POST['department'] === 'Marketing') ? 'selected' : ''; ?>>Marketing</option>
+                        <option value="General Management">General Management</option>
+                        <option value="Production Department">Production Department</option>
+                        <option value="Quality Department">Quality Department</option>
+                        <option value="Logistics Department">Logistics Department</option>
+                        <option value="Human Resources Department">Human Resources Department</option>
+                        <option value="Maintenance Department">Maintenance Department</option>
+                        <option value="Information Technology Department">Information Technology Department</option>
                     </select>
                 </div>
 

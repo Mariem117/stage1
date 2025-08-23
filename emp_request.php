@@ -135,16 +135,6 @@ $notifications = $stmt->fetchAll();
     <title>Employee Requests - Employee Management System</title>
     <link rel="stylesheet" href="profile.css">
     <style>
-        .logo {
-            height: 50px;
-            margin-right: 15px;
-        }
-
-        img {
-            overflow-clip-margin: content-box;
-            overflow: clip;
-        }
-
         .mark-read {
             background: #007bff;
             color: white;

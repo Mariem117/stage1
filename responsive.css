@@ -9,11 +9,11 @@
 
 /* Base styles for mobile */
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #a70202 0%, #000000 100%);
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #a70202 0%, rgb(0, 0, 0) 100%);
     min-height: 100vh;
-    line-height: 1.6;
-    font-size: 14px;
+    padding: 20px;
+    color: #333;
 }
 
 /* Enhanced navbar for mobile */
@@ -450,30 +450,6 @@ tr:hover {
 @media (min-width: 768px) {
     body {
         font-size: 16px;
-    }
-    
-    .navbar {
-        padding: 15px 20px;
-        border-radius: 8px;
-        margin-bottom: 25px;
-    }
-    
-    .navbar-nav {
-        gap: 20px;
-    }
-    
-    .nav-link {
-        font-size: 16px;
-        padding: 10px 15px;
-    }
-    
-    .container {
-        max-width: 1200px;
-        padding: 0 30px;
-    }
-    
-    .logo {
-        height: 45px;
     }
     
     table {
